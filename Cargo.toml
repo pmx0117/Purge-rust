@@ -1,0 +1,35 @@
+[workspace]
+members = ["crates/purge-core", "crates/purge-engine", "crates/purge-desktop"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+
+[workspace.dependencies]
+purge-core = { path = "crates/purge-core" }
+purge-engine = { path = "crates/purge-engine" }
+anyhow = "1"
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+walkdir = "2"
+sha2 = "0.10"
+trash = "5"
+tempfile = "3"
+gpui = { version = "=0.2.2", default-features = false, features = ["windows-manifest"] }
+smol = "2"
+unicode-segmentation = "1"
+raw-window-handle = "0.6"
+winreg = "0.56"
+windows = "0.61"
+embed-resource = "3"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+strip = "debuginfo"
+
+[profile.dev]
+debug = 0

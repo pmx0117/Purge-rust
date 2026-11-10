@@ -1,0 +1,31 @@
+# Build outputs and portable releases
+/target/
+/dist/
+
+# Local screenshots, diagnostics and quality reports
+/artifacts/
+/.metrics/
+/coverage/
+*.log
+*.profraw
+*.profdata
+
+# Editor, agent and machine-local settings
+/.idea/
+/.vscode/
+/.vs/
+/.agents/
+/.codex/
+/.aws/
+.env
+.env.*
+!.env.example
+
+# Temporary files and operating-system metadata
+*.tmp
+*.bak
+*.orig
+*.rej
+.DS_Store
+Thumbs.db
+Desktop.ini
