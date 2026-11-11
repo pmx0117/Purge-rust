@@ -9,6 +9,8 @@
 *.log
 *.profraw
 *.profdata
+__pycache__/
+*.pyc
 
 # Editor, agent and machine-local settings
 /.idea/

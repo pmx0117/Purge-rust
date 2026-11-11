@@ -27,6 +27,25 @@ cargo run --locked -p purge
 cargo build --locked --release -p purge
 ```
 
+## Release 发布
+
+推送与 `Cargo.toml` 工作区版本一致的标签（例如 `v0.1.0`）后，GitHub Actions 会在各系统的原生 runner 上执行测试、Clippy 和 Release 构建。全部成功后创建 **Release 草稿**，附带 Windows x64、Linux x64 / ARM64、macOS Intel / Apple Silicon 安装包和 `SHA256SUMS`，由仓库维护者检查后在 GitHub 发布。
+
+版本号统一来自 `workspace.package.version`，同步用于应用“关于”、Windows 文件属性和安装包命名。准备新版本时更新工作区版本及 Cargo.lock，提交后创建对应标签：
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+也可在 Actions 的 Release 工作流中选择要发布的分支或标签，通过 Run workflow 输入对应版本标签。标签尚不存在时，只有全部构建成功后才会为该提交创建标签与草稿；标签已存在时必须指向本次构建的提交。构建失败可以重跑任务，重跑会补齐草稿资源；已发布的 Release 不会被覆盖。带预发布后缀的版本（例如 `v0.2.0-rc.1`）会标为预发布。
+
+Windows 使用 ZIP 便携包。Linux 使用基于 Ubuntu 24.04 的原生 tar.gz 包，同时启用 Wayland 与 X11，需要兼容的系统库和 Vulkan 驱动。macOS 使用带图标与 Info.plist 的 `.app` ZIP 包，目前采用 ad-hoc 签名，尚未进行 Developer ID 签名或公证。
+
+发布自动化位于 `.github/`，打包脚本只使用 Python 标准库；可通过 `python -m unittest discover -s .github/scripts -v` 检查打包规则。构建产物位于已忽略的 `dist/`，通过 Release 分发。
+
+## 本地构建环境
+
 | 平台 | 环境与依赖 |
 | --- | --- |
 | Windows 10 / 11 x64 | Rust MSVC 工具链、Visual Studio C++ Build Tools、Windows SDK、支持 Direct3D 11 的显卡驱动 |

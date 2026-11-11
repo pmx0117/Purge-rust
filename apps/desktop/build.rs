@@ -40,12 +40,21 @@ fn main() {
     fs::write(output.join("purge.ico"), ico(&sizes, &images)).unwrap();
     fs::write(output.join("purge.icns"), icns(&tree)).unwrap();
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        let version = std::env::var("CARGO_PKG_VERSION").unwrap();
+        let numeric_version = format!(
+            "{},{},{},0",
+            std::env::var("CARGO_PKG_VERSION_MAJOR").unwrap(),
+            std::env::var("CARGO_PKG_VERSION_MINOR").unwrap(),
+            std::env::var("CARGO_PKG_VERSION_PATCH").unwrap(),
+        );
         let icon = output
             .join("purge.ico")
             .to_string_lossy()
             .replace('\\', "/");
         let resource = fs::read_to_string(assets.join("windows.rc"))
             .unwrap()
+            .replace("@VERSION_NUMERIC@", &numeric_version)
+            .replace("@VERSION@", &version)
             .replace("\"purge.ico\"", &format!("\"{icon}\""));
         let resource_path = output.join("windows.rc");
         fs::write(&resource_path, resource).unwrap();
