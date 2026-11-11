@@ -44,6 +44,82 @@ class ReleaseTests(unittest.TestCase):
             release.release_version(self.root, "v0.2.0-rc.1"), "0.2.0-rc.1"
         )
 
+    def test_invalid_workspace_version_is_rejected(self):
+        (self.root / "Cargo.toml").write_text('[workspace.package]\nversion="broken"\n')
+        with self.assertRaises(ValueError):
+            release.release_version(self.root)
+
+    def test_cli_rejects_missing_release_command_tag_or_target(self):
+        for argv in [
+            ["release.py"],
+            ["release.py", "version"],
+            ["release.py", "build"],
+        ]:
+            with (
+                self.subTest(argv=argv),
+                patch("sys.argv", argv),
+                contextlib.redirect_stderr(io.StringIO()),
+                self.assertRaises(SystemExit) as error,
+            ):
+                release.main()
+            self.assertEqual(error.exception.code, 2)
+
+    def test_version_cli_marks_prereleases_and_writes_workflow_outputs(self):
+        (self.root / "Cargo.toml").write_text(
+            '[workspace.package]\nversion="0.2.0-rc.1"\n'
+        )
+        output = self.root / "github-output"
+        argv = [
+            "release.py",
+            "version",
+            "--tag",
+            "v0.2.0-rc.1",
+            "--github-output",
+            str(output),
+        ]
+        with (
+            patch.object(release, "ROOT", self.root),
+            patch("sys.argv", argv),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            release.main()
+        self.assertEqual(
+            output.read_text(), "version=0.2.0-rc.1\ntag=v0.2.0-rc.1\nprerelease=true\n"
+        )
+
+    def test_build_cli_packages_the_selected_native_executable(self):
+        argv = [
+            "release.py",
+            "build",
+            "--target",
+            "x86_64-pc-windows-msvc",
+            "--output",
+            str(self.output),
+        ]
+        with (
+            patch.object(release, "ROOT", self.root),
+            patch("sys.argv", argv),
+            patch("release.build_release", return_value=(self.binary, self.resources)),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            release.main()
+        archive = self.output / "Purge-0.1.0-windows-x64.zip"
+        with zipfile.ZipFile(archive) as bundle:
+            self.assertEqual(
+                bundle.read("Purge-0.1.0-windows-x64/purge.exe"),
+                self.binary.read_bytes(),
+            )
+
+    def test_checksums_cli_refuses_to_release_an_incomplete_platform_set(self):
+        self.output.mkdir()
+        argv = ["release.py", "checksums", "--directory", str(self.output)]
+        with (
+            patch.object(release, "ROOT", self.root),
+            patch("sys.argv", argv),
+            self.assertRaises(ValueError),
+        ):
+            release.main()
+
     def test_windows_zip_has_an_executable_and_required_licenses(self):
         archive = self.package("x86_64-pc-windows-msvc")
         self.assertEqual(archive.name, "Purge-0.1.0-windows-x64.zip")
@@ -124,12 +200,21 @@ class ReleaseTests(unittest.TestCase):
                 "package_id": "purge",
                 "executable": str(self.binary),
             },
+            {"reason": "compiler-artifact", "package_id": "purge", "executable": None},
         ]
         self.assertEqual(
             release.build_outputs(messages, "purge"), (self.binary, self.resources)
         )
         with self.assertRaises(ValueError):
             release.build_outputs(messages, "missing")
+        for incomplete in [messages[1:2], messages[2:3]]:
+            with self.subTest(messages=incomplete), self.assertRaises(ValueError):
+                release.build_outputs(incomplete, "purge")
+
+    def test_packaging_can_create_a_nested_output_directory(self):
+        self.output = self.root / "nested/output/dist"
+        archive = self.package("x86_64-pc-windows-msvc")
+        self.assertTrue(zipfile.is_zipfile(archive))
 
     def test_checksums_require_every_platform_and_match_the_downloaded_bytes(self):
         self.output.mkdir()
@@ -158,3 +243,5 @@ class ReleaseTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+import contextlib
+import io
