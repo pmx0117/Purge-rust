@@ -2,11 +2,13 @@
 
 | 系统 | 文件后缀 | 使用方式 |
 | --- | --- | --- |
-| Windows x64 | `windows-x64.zip` | 解压后运行 `purge.exe` |
+| Windows x64 | `windows-x64-setup.exe` | 双击安装后从开始菜单启动 Purge |
 | Linux x64 | `linux-x64.tar.gz` | 解压后运行 `bin/purge` |
 | Linux ARM64 | `linux-arm64.tar.gz` | 解压后运行 `bin/purge` |
 | macOS Intel | `macos-x64.zip` | 解压后将 `Purge.app` 放入 Applications |
 | macOS Apple Silicon | `macos-arm64.zip` | 解压后将 `Purge.app` 放入 Applications |
+
+Windows 安装器默认按当前用户安装，支持覆盖安装、开始菜单入口和可选桌面快捷方式；卸载会保留用户设置与清理历史。安装器尚未进行代码签名。
 
 Linux 包基于 Ubuntu 24.04 构建，需要兼容的系统库和 Vulkan 驱动，同时支持原生 Wayland 与 X11。桌面入口与图标位于包内的 `share/` 目录。
 

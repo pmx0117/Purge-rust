@@ -1,5 +1,9 @@
+import contextlib
+import io
+import os
 import plistlib
 import stat
+import subprocess
 import tarfile
 import tempfile
 import unittest
@@ -100,15 +104,16 @@ class ReleaseTests(unittest.TestCase):
             patch.object(release, "ROOT", self.root),
             patch("sys.argv", argv),
             patch("release.build_release", return_value=(self.binary, self.resources)),
+            patch(
+                "release.compile_windows_installer", side_effect=self.installer_probe
+            ),
             contextlib.redirect_stdout(io.StringIO()),
         ):
             release.main()
-        archive = self.output / "Purge-0.1.0-windows-x64.zip"
-        with zipfile.ZipFile(archive) as bundle:
-            self.assertEqual(
-                bundle.read("Purge-0.1.0-windows-x64/purge.exe"),
-                self.binary.read_bytes(),
-            )
+        self.assertEqual(
+            (self.output / "Purge-0.1.0-windows-x64-setup.exe").read_bytes(),
+            b"MZ installer fixture",
+        )
 
     def test_checksums_cli_refuses_to_release_an_incomplete_platform_set(self):
         self.output.mkdir()
@@ -120,17 +125,15 @@ class ReleaseTests(unittest.TestCase):
         ):
             release.main()
 
-    def test_windows_zip_has_an_executable_and_required_licenses(self):
-        archive = self.package("x86_64-pc-windows-msvc")
-        self.assertEqual(archive.name, "Purge-0.1.0-windows-x64.zip")
-        with zipfile.ZipFile(archive) as bundle:
-            self.assertEqual(
-                bundle.read("Purge-0.1.0-windows-x64/purge.exe"),
-                self.binary.read_bytes(),
-            )
-            self.assertIn(
-                "Purge-0.1.0-windows-x64/licenses/LICENSE-GPUI", bundle.namelist()
-            )
+    @patch("release.compile_windows_installer")
+    def test_windows_emits_a_setup_exe_with_the_application_and_licenses(
+        self, compiler
+    ):
+        compiler.side_effect = self.installer_probe
+        installer = self.package("x86_64-pc-windows-msvc")
+        self.assertEqual(installer.name, "Purge-0.1.0-windows-x64-setup.exe")
+        self.assertEqual(installer.read_bytes(), b"MZ installer fixture")
+        self.assertFalse(list(self.output.glob("*.zip")))
 
     def test_linux_archives_keep_executable_permissions_and_desktop_identity(self):
         for target, architecture in [
@@ -213,8 +216,77 @@ class ReleaseTests(unittest.TestCase):
 
     def test_packaging_can_create_a_nested_output_directory(self):
         self.output = self.root / "nested/output/dist"
-        archive = self.package("x86_64-pc-windows-msvc")
-        self.assertTrue(zipfile.is_zipfile(archive))
+        archive = self.package("x86_64-unknown-linux-gnu")
+        self.assertTrue(tarfile.is_tarfile(archive))
+
+    def test_installer_only_matrix_selects_exactly_the_windows_native_runner(self):
+        self.assertEqual(
+            release.build_matrix(windows_only=True),
+            {
+                "include": [
+                    {
+                        "name": "Windows x64",
+                        "runner": "windows-2022",
+                        "target": "x86_64-pc-windows-msvc",
+                    }
+                ]
+            },
+        )
+        self.assertEqual(len(release.build_matrix()["include"]), 5)
+
+    def test_compiler_failure_never_reuses_a_stale_installer(self):
+        self.output.mkdir()
+        destination = self.output / "Purge-0.1.0-windows-x64-setup.exe"
+        destination.write_bytes(b"stale installer")
+        compiler = self.root / "ISCC.exe"
+        compiler.write_bytes(b"compiler fixture")
+        with (
+            patch.dict(os.environ, {"ISCC_PATH": str(compiler)}),
+            patch(
+                "release.subprocess.run",
+                side_effect=subprocess.CalledProcessError(1, "ISCC"),
+            ),
+            self.assertRaises(subprocess.CalledProcessError),
+        ):
+            release.compile_windows_installer(
+                self.root, self.root, self.resources, destination, "0.1.0"
+            )
+        self.assertFalse(destination.exists())
+
+    def test_matrix_cli_exposes_only_windows_for_draft_repack(self):
+        output = self.root / "matrix-output"
+        argv = [
+            "release.py",
+            "matrix",
+            "--windows-only",
+            "--github-output",
+            str(output),
+        ]
+        with patch("sys.argv", argv), contextlib.redirect_stdout(io.StringIO()):
+            release.main()
+        self.assertTrue(output.read_text().startswith('matrix={"include":'))
+        self.assertNotIn("apple", output.read_text())
+        self.assertNotIn("linux", output.read_text())
+
+    def test_updating_windows_instructions_preserves_custom_release_notes(self):
+        template = self.root / ".github/release-notes.md"
+        template.parent.mkdir(parents=True)
+        template.write_text("| Windows x64 | `windows-x64-setup.exe` | 双击安装 |\n")
+        notes = self.root / "draft.md"
+        notes.write_text(
+            "我的说明\n| Windows x64 | `windows-x64.zip` | 解压运行 |\n其他平台与更新记录\n"
+        )
+        release.update_windows_notes(self.root, notes)
+        expected = "我的说明\n| Windows x64 | `windows-x64-setup.exe` | 双击安装 |\n其他平台与更新记录\n"
+        self.assertEqual(notes.read_text(), expected)
+        release.update_windows_notes(self.root, notes)
+        self.assertEqual(notes.read_text(), expected)
+
+    def installer_probe(self, root, staging, resources, destination, version):
+        self.assertEqual((staging / "purge.exe").read_bytes(), self.binary.read_bytes())
+        self.assertEqual((staging / "licenses/LICENSE-GPUI").read_text(), "Apache-2.0")
+        self.assertEqual(version, "0.1.0")
+        destination.write_bytes(b"MZ installer fixture")
 
     def test_checksums_require_every_platform_and_match_the_downloaded_bytes(self):
         self.output.mkdir()
@@ -243,5 +315,3 @@ class ReleaseTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-import contextlib
-import io

@@ -40,9 +40,13 @@ git push origin v0.1.0
 
 也可在 Actions 的 Release 工作流中选择要发布的分支或标签，通过 Run workflow 输入对应版本标签。标签尚不存在时，只有全部构建成功后才会为该提交创建标签与草稿；标签已存在时必须指向本次构建的提交。构建失败可以重跑任务，重跑会补齐草稿资源；已发布的 Release 不会被覆盖。带预发布后缀的版本（例如 `v0.2.0-rc.1`）会标为预发布。
 
-Windows 使用 ZIP 便携包。Linux 使用基于 Ubuntu 24.04 的原生 tar.gz 包，同时启用 Wayland 与 X11，需要兼容的系统库和 Vulkan 驱动。macOS 使用带图标与 Info.plist 的 `.app` ZIP 包，目前采用 ad-hoc 签名，尚未进行 Developer ID 签名或公证。
+Windows 提供 `Purge-<版本>-windows-x64-setup.exe` 安装程序，默认安装到当前用户的 `%LOCALAPPDATA%\Programs\Purge`，可选择安装目录和桌面快捷方式；支持覆盖安装与系统卸载，保留 `%LOCALAPPDATA%\Purge` 中的设置和清理历史。安装器使用 Inno Setup 6.7+ 构建，目前未进行代码签名。
 
-发布自动化位于 `.github/`，打包脚本只使用 Python 标准库；可通过 `python -m unittest discover -s .github/scripts -v` 检查打包规则。构建产物位于已忽略的 `dist/`，通过 Release 分发。
+Linux 使用基于 Ubuntu 24.04 的原生 tar.gz 包，同时启用 Wayland 与 X11，需要兼容的系统库和 Vulkan 驱动。macOS 使用带图标与 Info.plist 的 `.app` ZIP 包，目前采用 ad-hoc 签名，尚未进行 Developer ID 签名或公证。
+
+只调整现有草稿的 Windows 安装器时，可在 Run workflow 中启用 `windows_installer_only`。该模式要求程序源码与版本标签一致，仅重建 Windows，保留其他系统的已有产物，更新校验文件并移除旧 Windows ZIP；已发布版本不允许这样修改。
+
+发布自动化位于 `.github/`，打包脚本只使用 Python 标准库；Windows 额外调用 Inno Setup 编译器，必要时通过 `ISCC_PATH` 指定 `ISCC.exe`。可通过 `python -m unittest discover -s .github/scripts -v` 检查打包规则。Windows CI 还会验证安装、同版覆盖安装、卸载及用户数据保留。构建产物位于已忽略的 `dist/`，通过 Release 分发。
 
 ## 本地构建环境
 
