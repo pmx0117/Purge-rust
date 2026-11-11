@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/purge-core", "crates/purge-engine", "crates/purge-desktop"]
+members = ["apps/desktop", "crates/purge-core", "crates/purge-engine"]
 resolver = "2"
 
 [workspace.package]

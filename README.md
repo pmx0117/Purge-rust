@@ -98,13 +98,16 @@ cargo test --locked --workspace --no-default-features
 ## 项目结构
 
 ```text
+apps/
+  desktop/          桌面应用入口、应用模型、控制器和 GPUI 界面
 crates/
   purge-core/       领域类型、分组与选择规则
   purge-engine/     扫描、清理校验、后台任务、平台和存储
-  purge-desktop/    应用模型、控制器和 GPUI 桌面界面
 assets/             字体、矢量图标、Windows 资源和 Linux 桌面入口
 licenses/           第三方许可证
 ```
+
+`apps/` 存放可运行的应用，`crates/` 存放内部库。桌面应用的 Cargo 包名和可执行文件名均为 `purge`，启动入口位于 `apps/desktop/src/main.rs`，仍可在仓库根目录执行 `cargo run --locked -p purge`。
 
 依赖方向为 `purge → purge-engine → purge-core`，桌面侧也直接使用 core 的领域类型。core 不依赖文件系统和界面；engine 不依赖 GPUI；桌面控制器协调应用模型、后台任务与持久化。
 
