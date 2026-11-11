@@ -4,10 +4,12 @@ import os
 import plistlib
 import stat
 import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
 import zipfile
+from functools import partial
 from pathlib import Path
 from unittest.mock import patch
 
@@ -238,13 +240,11 @@ class ReleaseTests(unittest.TestCase):
         self.output.mkdir()
         destination = self.output / "Purge-0.1.0-windows-x64-setup.exe"
         destination.write_bytes(b"stale installer")
-        compiler = self.root / "ISCC.exe"
-        compiler.write_bytes(b"compiler fixture")
         with (
-            patch.dict(os.environ, {"ISCC_PATH": str(compiler)}),
+            patch.dict(os.environ, {"ISCC_PATH": sys.executable}),
             patch(
                 "release.subprocess.run",
-                side_effect=subprocess.CalledProcessError(1, "ISCC"),
+                partial(subprocess.run, stderr=subprocess.PIPE),
             ),
             self.assertRaises(subprocess.CalledProcessError),
         ):
@@ -252,6 +252,25 @@ class ReleaseTests(unittest.TestCase):
                 self.root, self.root, self.resources, destination, "0.1.0"
             )
         self.assertFalse(destination.exists())
+
+    def test_compiler_creates_the_first_installer_in_a_fresh_output_directory(self):
+        self.output.mkdir()
+        destination = self.output / "Purge-0.1.0-windows-x64-setup.exe"
+        compiler = self.root / "ISCC.exe"
+        compiler.write_bytes(b"compiler fixture")
+        with (
+            patch.dict(os.environ, {"ISCC_PATH": str(compiler)}),
+            patch(
+                "release.subprocess.run",
+                side_effect=lambda *args, **kwargs: destination.write_bytes(
+                    b"MZ setup"
+                ),
+            ),
+        ):
+            release.compile_windows_installer(
+                self.root, self.root, self.resources, destination, "0.1.0"
+            )
+        self.assertEqual(destination.read_bytes(), b"MZ setup")
 
     def test_matrix_cli_exposes_only_windows_for_draft_repack(self):
         output = self.root / "matrix-output"
