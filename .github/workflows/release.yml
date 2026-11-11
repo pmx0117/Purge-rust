@@ -100,6 +100,9 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           echo 'MACOSX_DEPLOYMENT_TARGET=11.0' >> "$GITHUB_ENV"
+          # macOS TMPDIR can contain /var -> /private/var. Security tests need
+          # physical fixture roots; they test symbolic links explicitly.
+          echo "TMPDIR=$(cd "$RUNNER_TEMP" && pwd -P)" >> "$GITHUB_ENV"
           if ! xcrun --sdk macosx --find metal >/dev/null 2>&1; then
             xcodebuild -downloadComponent MetalToolchain
           fi
