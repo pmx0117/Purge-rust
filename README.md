@@ -90,7 +90,9 @@ cargo test --locked --workspace --no-default-features
 
 无图形环境检查 Clippy 时添加 `--no-default-features`。无界面测试覆盖领域规则、各平台路径与扫描目录、持久化、后台任务及托盘生命周期；桌面图形、窗口控制和托盘菜单需在对应系统验证。
 
-当前已在 Windows 验证原生图标及托盘隐藏、恢复、退出；在 Linux 原生 Wayland 和 X11/WSLg 验证桌面启动，Wayland 还验证了最大化、还原、改尺寸和最小化请求。macOS 核心与原生窗口接口已做目标编译检查，完整图形界面的 macOS 实机验收尚未完成。
+Release 流程已在 Windows x64、Linux x64 / ARM64、macOS Intel / Apple Silicon 的原生 runner 上通过测试、完整桌面 Clippy 和 Release 构建。Windows 与 Linux x64 的实际安装包已分别通过图标 / 托盘回归和原生 Wayland 启动检查。
+
+Linux 原生 Wayland 还验证了最大化、还原、改尺寸和最小化请求，X11/WSLg 已验证桌面启动。macOS 两种架构的 `.app` 均已构建并校验签名，完整图形界面的 macOS 实机交互验收尚未完成。
 
 测试默认使用临时样本和注入回收器，不清理本机用户缓存。
 
