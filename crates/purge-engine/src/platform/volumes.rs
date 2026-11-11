@@ -70,7 +70,7 @@ pub fn disk_info() -> Result<DiskInfo> {
     let (blocks, available, size) = (
         u64::from(stats.f_blocks),
         u64::from(stats.f_bavail),
-        u64::from(stats.f_frsize),
+        stats.f_frsize,
     );
     #[cfg(not(target_os = "macos"))]
     let (blocks, available, size) = (stats.f_blocks, stats.f_bavail, stats.f_frsize);
