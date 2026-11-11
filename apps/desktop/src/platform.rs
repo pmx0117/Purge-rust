@@ -168,7 +168,7 @@ pub fn is_minimized(window: &gpui::Window) -> bool {
             }
             #[cfg(target_os = "macos")]
             raw_window_handle::RawWindowHandle::AppKit(handle) => {
-                return unsafe { purge::macos_window::is_minimized(handle.ns_view) };
+                return unsafe { crate::macos_window::is_minimized(handle.ns_view) };
             }
             _ => {}
         }
