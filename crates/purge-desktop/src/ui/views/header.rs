@@ -6,26 +6,34 @@ impl PurgeView {
         div()
             .flex_shrink_0()
             .flex()
-            .items_center()
+            .items_start()
             .justify_between()
-            .gap_4()
-            .pb(px(20.))
+            .gap(px(style::SPACE_8))
+            .pb(px(
+                if self.controller.model.page == Page::Category(Category::Applications) {
+                    style::SPACE_12
+                } else {
+                    20.
+                },
+            ))
             .child(
                 div()
                     .flex_1()
                     .child(
                         div()
-                            .text_size(px(style::TITLE_SIZE))
-                            .font_weight(FontWeight::SEMIBOLD)
+                            .type_style(TextRole::PageTitle)
                             .child(self.controller.model.page.title()),
                     )
-                    .child(
-                        div()
-                            .mt_1()
-                            .text_size(px(11.))
-                            .text_color(rgb(t.muted))
-                            .child(subtitle),
-                    ),
+                    .when(self.controller.model.page.shows_scan_status(), |e| {
+                        e.child(
+                            div()
+                                .mt(px(style::SPACE_4))
+                                .type_style(TextRole::Metadata)
+                                .numeric()
+                                .text_color(rgb(t.muted))
+                                .child(subtitle),
+                        )
+                    }),
             )
             .when(
                 matches!(
@@ -72,6 +80,17 @@ impl PurgeView {
                             .on_click(cx.listener(|this, _, _, cx| this.review_safe(cx))),
                         )
                     })
+                },
+            )
+            .when(
+                self.controller.model.page == Page::Category(Category::Applications),
+                |e| {
+                    e.child(
+                        button("manage-applications", "管理应用", "external", t, true, true)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.handle(platform::open_apps_settings(), cx)
+                            })),
+                    )
                 },
             )
             .when_some(
@@ -121,6 +140,4 @@ impl PurgeView {
                 },
             )
     }
-
-    // OverviewView.diskSummary/categoriesCard/restOfDiskCard, with Windows data.
 }

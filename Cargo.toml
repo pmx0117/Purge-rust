@@ -5,7 +5,7 @@ resolver = "2"
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.92"
 
 [workspace.dependencies]
 purge-core = { path = "crates/purge-core" }
@@ -18,13 +18,18 @@ walkdir = "2"
 sha2 = "0.10"
 trash = "5"
 tempfile = "3"
-gpui = { version = "=0.2.2", default-features = false, features = ["windows-manifest"] }
+gpui = { git = "https://github.com/zed-industries/zed", rev = "5eb2ff065badabe91d492cdcb51447d2f4104401", default-features = false }
 smol = "2"
 unicode-segmentation = "1"
+image = { version = "0.25", default-features = false }
 raw-window-handle = "0.6"
 winreg = "0.56"
 windows = "0.61"
 embed-resource = "3"
+resvg = { version = "0.45", default-features = false }
+# GPUI still pulls xattr 0.2.3, which uses the Linux ENOATTR alias.
+libc = "=0.2.185"
+tray-icon = { version = "0.26", default-features = false, features = ["ksni"] }
 
 [profile.release]
 opt-level = 3

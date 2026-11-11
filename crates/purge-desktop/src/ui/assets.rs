@@ -1,6 +1,104 @@
 use super::*;
 pub(super) struct Assets;
 static EMBEDDED: &[(&str, &[u8])] = &[
+    ("tray", include_bytes!("../../../../assets/icons/tray.svg")),
+    (
+        "purge-mark.svg",
+        include_bytes!("../../../../assets/icons/purge-mark.svg"),
+    ),
+    (
+        "caption-minimize",
+        include_bytes!("../../../../assets/icons/caption-minimize.svg"),
+    ),
+    (
+        "caption-maximize",
+        include_bytes!("../../../../assets/icons/caption-maximize.svg"),
+    ),
+    (
+        "caption-restore",
+        include_bytes!("../../../../assets/icons/caption-restore.svg"),
+    ),
+    (
+        "caption-close",
+        include_bytes!("../../../../assets/icons/caption-close.svg"),
+    ),
+    (
+        "list",
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../assets/icons/list.svg"
+        )),
+    ),
+    (
+        "more",
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../assets/icons/more.svg"
+        )),
+    ),
+    (
+        "free-tile",
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../assets/icons/free-tile.svg"
+        )),
+    ),
+    (
+        "check-circle",
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../assets/icons/check-circle.svg"
+        )),
+    ),
+    (
+        "question-circle",
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../assets/icons/question-circle.svg"
+        )),
+    ),
+    (
+        "chevrons",
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../assets/icons/chevrons.svg"
+        )),
+    ),
+    (
+        "overview-filled",
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../assets/icons/overview-filled.svg"
+        )),
+    ),
+    (
+        "apps-filled",
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../assets/icons/apps-filled.svg"
+        )),
+    ),
+    (
+        "cache-filled",
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../assets/icons/cache-filled.svg"
+        )),
+    ),
+    (
+        "dev-filled",
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../assets/icons/dev-filled.svg"
+        )),
+    ),
+    (
+        "file-filled",
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../assets/icons/file-filled.svg"
+        )),
+    ),
     (
         "brand/googlechrome-light",
         include_bytes!(concat!(
@@ -10,10 +108,7 @@ static EMBEDDED: &[(&str, &[u8])] = &[
     ),
     (
         "purge.png",
-        include_bytes!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../assets/purge.png"
-        )),
+        include_bytes!(concat!(env!("OUT_DIR"), "/purge.png")),
     ),
     (
         "apps",

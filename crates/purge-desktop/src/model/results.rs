@@ -103,8 +103,8 @@ fn filters(category: Category) -> &'static [Filter] {
 fn filter_metadata(filter: Filter) -> (&'static str, &'static str) {
     match filter {
         Filter::All => ("全部", "overview"),
-        Filter::Safe => ("可安全清理", "shield"),
-        Filter::Review => ("需要确认", "info"),
+        Filter::Safe => ("可安全清理", "check-circle"),
+        Filter::Review => ("需要确认", "question-circle"),
         Filter::Duplicates => ("重复文件", "copy"),
     }
 }

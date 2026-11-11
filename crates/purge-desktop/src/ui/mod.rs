@@ -1,27 +1,35 @@
+mod app_icons;
 mod assets;
 mod bootstrap;
+mod chrome;
 mod components;
 mod input;
+mod label;
 mod menus;
+mod shell;
 mod style;
 mod theme;
+mod tray;
 mod views;
 use anyhow::Result;
 pub use bootstrap::run;
 use components::*;
 use gpui::{prelude::*, *};
 use input::TextInput;
+use label::{elided, elided_middle};
+use menus::Picker;
 use purge::{
     controller::AppController,
     format::*,
     launch::LaunchOptions,
     model::Page,
     platform,
-    preferences::{Filter, Sort},
+    preferences::{AppLayout, Filter, Sort},
 };
 use purge_core::*;
 use purge_engine::{jobs::Operation, storage::LocalRepository};
 use std::{borrow::Cow, time::Duration};
+use style::{TextRole, TypographyExt};
 use theme::Theme;
 actions!(
     purge,
@@ -39,7 +47,9 @@ actions!(
         SafeItems,
         ReviewItems,
         NextControl,
-        PreviousControl
+        PreviousControl,
+        MinimizeToTray,
+        QuitApplication
     ]
 );
 
@@ -47,14 +57,18 @@ struct PurgeView {
     controller: AppController,
     theme: Theme,
     native_dark: Option<bool>,
+    #[cfg(windows)]
+    native_icon_scale: Option<f32>,
     highlighted: Option<Category>,
-    sort_menu: bool,
+    picker: Option<Picker>,
     context_item: Option<(ItemGroup, Point<Pixels>)>,
     menu_position: Point<Pixels>,
     search: Entity<TextInput>,
     focus: FocusHandle,
     review_focus: [FocusHandle; 3],
     review_focused: bool,
+    app_icons: std::collections::HashMap<u64, ImageSource>,
+    _icon_task: Option<Task<()>>,
     _tick: Task<()>,
     _search_subscription: Subscription,
 }
@@ -79,17 +93,22 @@ impl PurgeView {
             controller,
             theme,
             native_dark: None,
+            #[cfg(windows)]
+            native_icon_scale: None,
             highlighted: None,
-            sort_menu: false,
+            picker: None,
             context_item: None,
             menu_position: Point::default(),
             search,
             focus: cx.focus_handle(),
             review_focus: [cx.focus_handle(), cx.focus_handle(), cx.focus_handle()],
             review_focused: false,
+            app_icons: Default::default(),
+            _icon_task: None,
             _tick: tick,
             _search_subscription: subscription,
         };
+        view.load_app_icons(cx);
         if view.controller.model.settings.scan_on_start {
             view.controller.start_scan(Category::ALL.to_vec());
         }
@@ -120,14 +139,17 @@ impl PurgeView {
             return;
         }
         self.context_item = None;
-        self.sort_menu = false;
+        self.picker = None;
         self.highlighted = None;
         self.search.update(cx, |input, cx| input.clear(cx));
-        self.focus.focus(window);
+        self.focus.focus(window, cx);
         cx.notify();
     }
     fn start_scan(&mut self, categories: Vec<Category>, cx: &mut Context<Self>) {
-        self.controller.start_scan(categories);
+        let includes_apps = categories.contains(&Category::Applications);
+        if self.controller.start_scan(categories) && includes_apps {
+            self.load_app_icons(cx);
+        }
         cx.notify();
     }
     fn rescan(&mut self, _: &Rescan, _: &mut Window, cx: &mut Context<Self>) {
@@ -205,7 +227,7 @@ impl PurgeView {
 impl Render for PurgeView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.controller.model.review.is_some() && !self.review_focused {
-            self.review_focus[0].focus(window);
+            self.review_focus[0].focus(window, cx);
             self.review_focused = true;
         } else if self.controller.model.review.is_none() {
             self.review_focused = false;
@@ -219,30 +241,47 @@ impl Render for PurgeView {
             }
             self.native_dark = Some(self.theme.dark);
         }
+        #[cfg(windows)]
+        if self.native_icon_scale != Some(window.scale_factor())
+            && let Ok(handle) = raw_window_handle::HasWindowHandle::window_handle(window)
+            && let raw_window_handle::RawWindowHandle::Win32(handle) = handle.as_raw()
+        {
+            if let Err(error) = platform::apply_window_icons(handle.hwnd.get()) {
+                self.controller.model.notice = Some(format!("系统图标加载失败：{error}"));
+            }
+            self.native_icon_scale = Some(window.scale_factor());
+        }
         let t = self.theme;
+        let placeholder = if self.controller.model.page == Page::Category(Category::Applications) {
+            "搜索应用"
+        } else {
+            "搜索名称、路径或类型…"
+        };
         self.search.update(cx, |input, _| {
-            input.set_colors(
-                if t.dark { 0x85827c } else { t.faint },
-                if t.dark { 0x6cc3f0 } else { t.accent },
-                if t.dark { 0x6cc3f045 } else { 0x85a9d44d },
-            )
+            input.set_placeholder(placeholder);
+            input.set_colors(t.faint, t.accent, t.text_selection)
         });
         let body = match self.controller.model.page {
             Page::Overview => self.overview(cx),
+            Page::Category(Category::Applications) => self.applications_view(window, cx),
             Page::Category(c) => self.category(c, window, cx),
             Page::Settings => self.settings_view(cx),
             Page::History => self.history_view(cx),
             Page::About => self.about(cx),
         };
-        window.set_window_title("Purge · Windows");
+        let show_chrome = purge::lifecycle::custom_caption(
+            purge_engine::platform::OperatingSystem::current(),
+            window.is_fullscreen(),
+            matches!(window.window_decorations(), Decorations::Client { .. }),
+        );
         div()
             .size_full()
             .relative()
             .flex()
+            .when(show_chrome, |e| e.pt(px(chrome::HEIGHT)))
             .bg(rgb(t.base))
             .text_color(rgb(t.text))
-            .font_family("Onest")
-            .text_size(px(13.))
+            .type_style(TextRole::Body)
             .track_focus(&self.focus)
             .key_context("Purge")
             .on_action(cx.listener(Self::rescan))
@@ -254,7 +293,7 @@ impl Render for PurgeView {
                         Page::Category(Category::LargeFiles | Category::Applications)
                     )
                 {
-                    this.search.focus_handle(cx).focus(w);
+                    this.search.focus_handle(cx).focus(w, cx);
                 }
             }))
             .on_action(cx.listener(|this, _: &AllItems, _, cx| this.set_filter(Filter::All, cx)))
@@ -262,7 +301,7 @@ impl Render for PurgeView {
             .on_action(
                 cx.listener(|this, _: &ReviewItems, _, cx| this.set_filter(Filter::Review, cx)),
             )
-            .on_action(cx.listener(|this, _: &NextControl, w, _| {
+            .on_action(cx.listener(|this, _: &NextControl, w, cx| {
                 if this.controller.model.review.is_some() {
                     let index = if this.review_focus[0].is_focused(w) {
                         1
@@ -273,12 +312,12 @@ impl Render for PurgeView {
                     } else {
                         0
                     };
-                    this.review_focus[index].focus(w);
+                    this.review_focus[index].focus(w, cx);
                 } else {
-                    w.focus_next();
+                    w.focus_next(cx);
                 }
             }))
-            .on_action(cx.listener(|this, _: &PreviousControl, w, _| {
+            .on_action(cx.listener(|this, _: &PreviousControl, w, cx| {
                 if this.controller.model.review.is_some() {
                     let index = if this.review_focus[2].is_focused(w) {
                         1
@@ -289,9 +328,9 @@ impl Render for PurgeView {
                     } else {
                         1
                     };
-                    this.review_focus[index].focus(w);
+                    this.review_focus[index].focus(w, cx);
                 } else {
-                    w.focus_prev();
+                    w.focus_prev(cx);
                 }
             }))
             .on_action(
@@ -312,22 +351,21 @@ impl Render for PurgeView {
             .on_action(cx.listener(|this, _: &Escape, w, cx| {
                 let dismissing = this.controller.model.review.is_some()
                     || this.context_item.is_some()
-                    || this.sort_menu;
+                    || this.picker.is_some();
                 this.controller.model.review = None;
                 this.context_item = None;
-                this.sort_menu = false;
+                this.picker = None;
                 if !dismissing && this.controller.operation() == Some(Operation::Scan) {
                     this.controller.cancel();
                 }
-                this.focus.focus(w);
+                this.focus.focus(w, cx);
                 cx.notify();
             }))
-            .child(self.sidebar(cx))
+            .child(self.sidebar(chrome::hairline(window), !show_chrome, cx))
             .child(
                 div()
                     .flex_1()
                     .min_w_0()
-                    .max_w(px(style::PAGE_MAX_WIDTH))
                     .h_full()
                     .flex()
                     .flex_col()
@@ -337,13 +375,13 @@ impl Render for PurgeView {
                     .when_some(self.controller.model.notice.clone(), |e, s| {
                         e.child(
                             div()
-                                .mb_3()
-                                .p_3()
+                                .mb(px(style::SPACE_12))
+                                .p(px(style::SPACE_12))
                                 .bg(rgb(t.raised))
-                                .rounded(px(4.))
+                                .rounded(px(style::CARD_RADIUS))
                                 .flex()
                                 .items_start()
-                                .gap_3()
+                                .gap(px(style::SPACE_12))
                                 .child(icon("info", t.muted, 14.))
                                 .child(
                                     div()
@@ -351,7 +389,7 @@ impl Render for PurgeView {
                                         .flex_1()
                                         .max_h(px(120.))
                                         .overflow_y_scroll()
-                                        .text_size(px(11.))
+                                        .type_style(TextRole::Callout)
                                         .child(s),
                                 )
                                 .child(
@@ -373,12 +411,12 @@ impl Render for PurgeView {
                             e.child(
                                 div()
                                     .id("scan-warning")
-                                    .mb(px(12.))
-                                    .p(px(12.))
-                                    .rounded(px(14.))
+                                    .mb(px(style::SPACE_12))
+                                    .p(px(style::SPACE_12))
+                                    .rounded(px(style::CARD_RADIUS))
                                     .bg(rgb(t.review_bg))
                                     .text_color(rgb(t.review))
-                                    .text_size(px(12.))
+                                    .type_style(TextRole::Callout)
                                     .cursor_pointer()
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         let mut details = this
@@ -408,7 +446,7 @@ impl Render for PurgeView {
                     )
                     .child(body),
             )
-            .when(self.context_item.is_some() || self.sort_menu, |e| {
+            .when(self.context_item.is_some() || self.picker.is_some(), |e| {
                 e.child(self.popup(window, cx))
             })
             .when_some(
@@ -418,6 +456,11 @@ impl Render for PurgeView {
                     .as_ref()
                     .map(|plan| plan.items.clone()),
                 |e, items| e.child(self.review_modal(&items, cx)),
+            )
+            .when(show_chrome, |e| e.child(chrome::titlebar(t, window, cx)))
+            .when(
+                cfg!(target_os = "linux") && show_chrome && !window.is_maximized(),
+                |e| e.child(chrome::resize_handles(t, window)),
             )
     }
 }

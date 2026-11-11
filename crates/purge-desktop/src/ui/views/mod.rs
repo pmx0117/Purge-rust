@@ -1,5 +1,6 @@
 use super::*;
 mod about;
+mod applications;
 mod header;
 mod lists;
 mod overview;

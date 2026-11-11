@@ -1,6 +1,11 @@
 use crate::platform;
 use purge_core::{Category, Safety};
 use std::{fs, path::PathBuf, time::Duration};
+#[path = "catalog_unix.rs"]
+mod unix;
+
+/// Safety margin for temporary files and crash dumps, independent of projects.
+pub const TEMPORARY_RETENTION_HOURS: u64 = 24;
 #[derive(Clone, Debug)]
 pub struct Rule {
     pub path: PathBuf,
@@ -13,11 +18,23 @@ pub struct Rule {
 }
 
 pub fn cache_rules() -> Vec<Rule> {
-    discover_cache_rules(
+    discover_cache_rules_for(
+        platform::OperatingSystem::current(),
         &platform::home_dir(),
         &platform::local_dir(),
         &platform::roaming_dir(),
     )
+}
+pub fn discover_cache_rules_for(
+    system: platform::OperatingSystem,
+    home: &std::path::Path,
+    local: &std::path::Path,
+    roaming: &std::path::Path,
+) -> Vec<Rule> {
+    if system != platform::OperatingSystem::Windows {
+        return unix::rules(system, home, local, roaming);
+    }
+    discover_cache_rules(home, local, roaming)
 }
 pub fn discover_cache_rules(
     home: &std::path::Path,
@@ -184,9 +201,9 @@ fn temporary_rules(local: &std::path::Path) -> Vec<Rule> {
             name: name.into(),
             category: Category::Caches,
             safety: Safety::Safe,
-            description: "仅列出至少 24 小时未修改的条目；清理前再次校验，操作失败会跳过。".into(),
+            description: format!("仅列出至少 {TEMPORARY_RETENTION_HOURS} 小时未修改的临时条目；不受开发项目闲置时间影响。"),
             children: true,
-            minimum_age: Duration::from_secs(86400),
+            minimum_age: Duration::from_secs(TEMPORARY_RETENTION_HOURS * 60 * 60),
         })
         .collect()
 }

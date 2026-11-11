@@ -7,7 +7,9 @@ mod fingerprint;
 mod personal;
 mod projects;
 mod scope;
-pub use catalog::{Rule, cache_rules, discover_cache_rules};
+pub use catalog::{
+    Rule, TEMPORARY_RETENTION_HOURS, cache_rules, discover_cache_rules, discover_cache_rules_for,
+};
 use collector::{Candidate, ScanCollector};
 pub use duplicates::find_duplicates;
 pub use events::ScanEvent;

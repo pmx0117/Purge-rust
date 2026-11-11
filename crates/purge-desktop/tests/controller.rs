@@ -150,3 +150,40 @@ fn selection_and_directory_actions_are_coordinated_without_gui_state() {
     assert_eq!(stored.scan.exclusions, vec![PathBuf::from("excluded")]);
     assert_eq!(app.data_directory().unwrap(), directory.path());
 }
+
+#[test]
+fn changing_application_layout_keeps_the_current_results_and_persists_the_choice() {
+    use purge::preferences::AppLayout;
+    let directory = TempDir::new().unwrap();
+    let mut app = controller(&directory, LaunchOptions::default());
+    assert_eq!(app.model.settings.app_layout, AppLayout::Cards);
+    let mut installed = candidate();
+    installed.name = "Fixture Editor".into();
+    installed.kind = ItemKind::InstalledApplication;
+    let mut cache = candidate();
+    cache.id = 99;
+    app.model.items = vec![installed, cache];
+    app.navigate(Page::Category(Category::Applications));
+    app.set_sort(Sort::Name);
+    app.model.selected.insert(99);
+    let before: Vec<_> = app
+        .model
+        .visible("editor")
+        .iter()
+        .map(|item| item.id)
+        .collect();
+    app.set_app_layout(AppLayout::List);
+    assert_eq!(
+        app.model
+            .visible("editor")
+            .iter()
+            .map(|item| item.id)
+            .collect::<Vec<_>>(),
+        before
+    );
+    assert_eq!(app.model.sort, Sort::Name);
+    assert_eq!(app.model.selected, [99].into_iter().collect());
+    let reopened = controller(&directory, LaunchOptions::default());
+    assert_eq!(reopened.model.settings.app_layout, AppLayout::List);
+    assert_eq!(AppLayout::from_key("unknown-layout"), AppLayout::Cards);
+}

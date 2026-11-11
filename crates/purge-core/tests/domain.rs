@@ -129,3 +129,19 @@ fn manual_bulk_toggle_can_select_personal_files_and_only_clears_visible_entries(
     assert_eq!(remove, vec![1, 2]);
     assert!(!remove.contains(&99));
 }
+
+#[test]
+fn nested_mounts_do_not_count_as_the_home_volume_just_because_paths_start_with_root() {
+    let mut candidate = item(ItemKind::ApplicationCache);
+    candidate.path = "/mnt/other/cache".into();
+    candidate.footprint.volume_id = Some(22);
+    let disk = DiskInfo {
+        name: "/".into(),
+        total: 100,
+        free: 20,
+        volume_id: Some(11),
+    };
+    assert!(!disk.contains(&candidate));
+    candidate.footprint.volume_id = Some(11);
+    assert!(disk.contains(&candidate));
+}

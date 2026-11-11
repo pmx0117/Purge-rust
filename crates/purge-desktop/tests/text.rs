@@ -14,3 +14,19 @@ fn utf16_and_byte_offsets_round_trip_at_character_boundaries() {
     assert_eq!(byte_offset(text, 999), text.len());
     assert_eq!(utf16_offset(text, 999), 5);
 }
+
+#[test]
+fn mixed_unicode_labels_fit_without_losing_boundaries_or_reusing_a_narrow_pass() {
+    use unicode_segmentation::UnicodeSegmentation;
+    let measure = |value: &str| value.graphemes(true).count() as f32;
+    let text = "AB远程控制器🙂正式版";
+    assert_eq!(fit_label(text, 6., true, measure), "AB远…式版");
+    assert_eq!(fit_label(text, 6., false, measure), "AB远程控…");
+    assert_eq!(fit_label(text, 1., true, measure), "…");
+    assert_eq!(fit_label(text, 100., true, measure), text);
+    assert_eq!(fit_label(text, 0., true, measure), "");
+    assert_eq!(
+        fit_label("A👩‍💻B e\u{301}C", 5., true, measure),
+        "A👩‍💻…e\u{301}C"
+    );
+}

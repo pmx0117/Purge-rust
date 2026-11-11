@@ -56,6 +56,11 @@ impl Measurement<'_> {
             return;
         }
         let modified = metadata.modified().ok();
+        #[cfg(unix)]
+        if self.result.volume_id.is_none() {
+            use std::os::unix::fs::MetadataExt;
+            self.result.volume_id = Some(metadata.dev());
+        }
         self.result.newest = self.result.newest.max(modified);
         let mut hash = DefaultHasher::new();
         path.hash(&mut hash);

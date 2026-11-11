@@ -6,12 +6,12 @@ impl PurgeView {
             .bg(rgb(t.card))
             .border_1()
             .border_color(rgb(t.border))
-            .rounded(px(14.))
+            .rounded(px(style::CARD_RADIUS))
             .px(px(20.));
         for (index, (title, description, glyph)) in [
             (
                 "文件去向",
-                "清理的文件默认移入 Windows 回收站，可在清空前恢复。",
+                "清理的文件默认移入系统回收站，可在清空前恢复。",
                 "trash",
             ),
             (
@@ -27,21 +27,25 @@ impl PurgeView {
                 div()
                     .flex()
                     .items_start()
-                    .gap(px(12.))
+                    .gap(px(style::SPACE_12))
                     .py(px(18.))
                     .when(index == 0, |e| {
                         e.border_b(px(0.5)).border_color(rgb(t.border))
                     })
-                    .child(div().pt(px(2.)).child(icon(glyph, t.muted, 16.)))
+                    .child(
+                        div()
+                            .pt(px(style::SPACE_2))
+                            .child(icon(glyph, t.muted, 16.)),
+                    )
                     .child(
                         div()
                             .flex_1()
                             .child(div().font_weight(FontWeight::MEDIUM).child(title))
                             .child(
                                 div()
-                                    .mt(px(4.))
-                                    .text_size(px(12.))
-                                    .line_height(relative(1.6))
+                                    .mt(px(style::SPACE_4))
+                                    .type_style(TextRole::Callout)
+                                    .line_height(px(18.))
                                     .text_color(rgb(t.muted))
                                     .child(description),
                             ),
@@ -57,10 +61,10 @@ impl PurgeView {
                 div()
                     .max_w(px(620.))
                     .pt(px(20.))
-                    .pb(px(24.))
+                    .pb(px(style::SPACE_24))
                     .flex()
                     .flex_col()
-                    .gap(px(24.))
+                    .gap(px(style::SPACE_24))
                     .child(
                         div()
                             .flex()
@@ -71,21 +75,24 @@ impl PurgeView {
                                     "purge.png".into(),
                                 )))
                                 .size(px(64.))
-                                .rounded(px(14.)),
+                                .rounded(px(style::CARD_RADIUS)),
                             )
                             .child(
                                 div()
                                     .child(
                                         div()
                                             .font_family("Onest")
-                                            .text_size(px(28.))
-                                            .font_weight(FontWeight::SEMIBOLD)
-                                            .child("Purge for Windows"),
+                                            .type_style(TextRole::Title)
+                                            .child(format!(
+                                                "Purge for {}",
+                                                purge_engine::platform::OperatingSystem::current()
+                                                    .label()
+                                            )),
                                     )
                                     .child(
                                         div()
-                                            .mt(px(6.))
-                                            .text_size(px(12.))
+                                            .mt(px(style::SPACE_6))
+                                            .type_style(TextRole::Callout)
                                             .text_color(rgb(t.muted))
                                             .child(format!("版本 {}", env!("CARGO_PKG_VERSION"))),
                                     ),
@@ -93,7 +100,7 @@ impl PurgeView {
                     )
                     .child(
                         div()
-                            .text_size(px(14.))
+                            .type_style(TextRole::Body)
                             .text_color(rgb(t.muted))
                             .child("清理缓存，整理磁盘空间。"),
                     )
@@ -102,7 +109,7 @@ impl PurgeView {
                         div()
                             .flex()
                             .flex_wrap()
-                            .gap(px(12.))
+                            .gap(px(style::SPACE_12))
                             .child(
                                 button("about-recycle-bin", "打开回收站", "trash", t, false, true)
                                     .on_click(cx.listener(|this, _, _, cx| {
@@ -121,7 +128,7 @@ impl PurgeView {
                     )
                     .child(
                         div()
-                            .text_size(px(11.))
+                            .type_style(TextRole::Metadata)
                             .text_color(rgb(t.faint))
                             .line_height(relative(1.8))
                             .child("Ctrl+R 重新扫描 · Ctrl+Shift+R 扫描全部 · Ctrl+1–5 切换分类"),

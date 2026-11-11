@@ -144,6 +144,7 @@ fn scan_events_apply_in_order_and_only_finish_the_requested_categories() {
                 name: "disk".into(),
                 total: 100,
                 free: 30,
+                volume_id: None,
             },
             trash_bytes: Some(10),
         },

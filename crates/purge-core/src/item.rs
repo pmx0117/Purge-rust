@@ -46,6 +46,7 @@ pub struct Footprint {
     pub incomplete: bool,
     pub has_links: bool,
     pub newest: Option<SystemTime>,
+    pub volume_id: Option<u64>,
 }
 
 impl Footprint {

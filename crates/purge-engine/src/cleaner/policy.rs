@@ -179,12 +179,88 @@ fn validate_project_activity(item: &Item, settings: &ScanOptions) -> Result<()> 
     validate_project_age(&current, settings)
 }
 fn validate_project_age(current: &purge_core::Footprint, settings: &ScanOptions) -> Result<()> {
-    if current
-        .newest
-        .and_then(|time| time.elapsed().ok())
-        .is_none_or(|age| age.as_secs() < settings.stale_project_days.saturating_mul(86400))
-    {
+    if !settings.project_is_stale(current, std::time::SystemTime::now()) {
         bail!("项目尚未达到设置的闲置时间");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use purge_core::{Footprint, Safety, path_id};
+    use std::time::{Duration, SystemTime};
+
+    fn temporary_item(path: &Path) -> Item {
+        Item {
+            id: path_id(path),
+            name: "temporary fixture".into(),
+            path: path.into(),
+            kind: ItemKind::Temporary,
+            safety: Safety::Safe,
+            description: String::new(),
+            footprint: scanner::measure(path, &AtomicBool::new(false)),
+            project_guard: None,
+            modified: None,
+            duplicate_group: None,
+        }
+    }
+
+    #[test]
+    fn temporary_cleanup_rechecks_fixed_retention_independently_of_project_settings() {
+        let fixture = tempfile::TempDir::new().unwrap();
+        let temporary = fixture.path().join("Temp");
+        fs::create_dir(&temporary).unwrap();
+        let old = temporary.join("old.tmp");
+        let recent = temporary.join("recent.tmp");
+        fs::write(&old, "old").unwrap();
+        fs::write(&recent, "recent").unwrap();
+        fs::OpenOptions::new()
+            .write(true)
+            .open(&old)
+            .unwrap()
+            .set_times(
+                fs::FileTimes::new()
+                    .set_modified(SystemTime::now() - Duration::from_secs(48 * 3600)),
+            )
+            .unwrap();
+        let old_item = temporary_item(&old);
+        let recent_item = temporary_item(&recent);
+        assert_ne!(old_item.footprint, Footprint::default());
+        for stale_project_days in [0, 30, 90, 180] {
+            let settings = ScanOptions {
+                stale_project_days,
+                ..Default::default()
+            };
+            let policy = CleanupPolicy {
+                settings: &settings,
+                rules: scanner::discover_cache_rules(
+                    fixture.path(),
+                    fixture.path(),
+                    fixture.path(),
+                ),
+                protected: vec![],
+                current_directory: None,
+                personal_roots: vec![],
+            };
+            policy.validate(&old_item).unwrap();
+            assert!(
+                policy.validate(&recent_item).is_err(),
+                "project setting {stale_project_days} bypassed temporary retention"
+            );
+        }
+        fs::write(&old, "recent activity").unwrap();
+        let settings = ScanOptions::default();
+        let policy = CleanupPolicy {
+            settings: &settings,
+            rules: scanner::discover_cache_rules(fixture.path(), fixture.path(), fixture.path()),
+            protected: vec![],
+            current_directory: None,
+            personal_roots: vec![],
+        };
+        assert!(
+            policy.validate(&old_item).is_err(),
+            "a newly active temporary file cannot be recycled from its old snapshot"
+        );
+    }
 }

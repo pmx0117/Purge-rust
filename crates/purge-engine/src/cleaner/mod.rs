@@ -10,7 +10,7 @@ pub fn validate(item: &Item, settings: &Settings) -> Result<()> {
 }
 pub fn clean(items: &[Item], settings: &Settings) -> CleanupReport {
     let mut report = clean_with(items, settings, |path| {
-        trash::delete(path).context("Windows 回收站操作失败")
+        trash::delete(path).context("系统回收站操作失败")
     });
     report.trash_bytes = platform::trash_bytes().unwrap_or(None);
     report

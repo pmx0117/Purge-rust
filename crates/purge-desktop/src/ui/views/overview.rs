@@ -8,7 +8,7 @@ impl PurgeView {
             .flex()
             .w_full()
             .h(px(style::BAR_HEIGHT))
-            .gap(px(2.))
+            .gap(px(style::SPACE_2))
             .rounded_full()
             .overflow_hidden()
             .bg(rgb(t.chart_free));
@@ -22,12 +22,8 @@ impl PurgeView {
                 .model
                 .items
                 .iter()
-                .filter(|i| {
-                    i.category() == category
-                        && i.path
-                            .to_string_lossy()
-                            .to_lowercase()
-                            .starts_with(&self.controller.model.disk.name.to_lowercase())
+                .filter(|item| {
+                    item.category() == category && self.controller.model.disk.contains(item)
                 })
                 .map(Item::bytes)
                 .sum::<u64>()
@@ -39,7 +35,7 @@ impl PurgeView {
                         .id(("disk-segment", index))
                         .h_full()
                         .w(relative(bytes as f32 / total as f32))
-                        .bg(rgb(category.color()))
+                        .bg(rgb(t.chart_color(category)))
                         .cursor_pointer()
                         .on_hover(cx.listener(move |this, hovered, _, cx| {
                             this.highlighted = if *hovered { Some(category) } else { None };
@@ -69,7 +65,8 @@ impl PurgeView {
             .overflow_hidden();
         for (index, category) in Category::ALL.into_iter().enumerate() {
             if index > 0 {
-                categories = categories.child(div().mx(px(16.)).h(px(0.5)).bg(rgb(t.border)));
+                categories =
+                    categories.child(div().mx(px(style::SPACE_16)).h(px(0.5)).bg(rgb(t.border)));
             }
             let count = self
                 .controller
@@ -86,12 +83,7 @@ impl PurgeView {
                     .items
                     .iter()
                     .filter(|item| item.category() == category)
-                    .any(|item| {
-                        !platform::within(
-                            &item.path,
-                            std::path::Path::new(&self.controller.model.disk.name),
-                        )
-                    });
+                    .any(|item| !self.controller.model.disk.contains(item));
             let safe = self
                 .controller
                 .model
@@ -123,10 +115,10 @@ impl PurgeView {
                     .id(("summary", index))
                     .flex()
                     .items_center()
-                    .gap(px(12.))
+                    .gap(px(style::SPACE_12))
                     .px(px(14.))
-                    .py(px(12.))
-                    .min_h(px(58.))
+                    .py(px(style::SPACE_12))
+                    .min_h(px(60.))
                     .bg(rgb(if emphasized { t.row_hover } else { t.card }))
                     .cursor_pointer()
                     .hover(move |e| e.bg(rgb(t.row_hover)))
@@ -147,11 +139,10 @@ impl PurgeView {
                                 div()
                                     .flex()
                                     .items_center()
-                                    .gap(px(6.))
+                                    .gap(px(style::SPACE_6))
                                     .child(
                                         div()
-                                            .text_size(px(13.))
-                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .type_style(TextRole::Headline)
                                             .child(category.label()),
                                     )
                                     .when(
@@ -164,19 +155,19 @@ impl PurgeView {
                             )
                             .child(
                                 div()
-                                    .mt(px(2.))
-                                    .text_size(px(11.))
+                                    .mt(px(style::SPACE_2))
+                                    .type_style(TextRole::Callout)
                                     .text_color(rgb(t.muted))
-                                    .text_ellipsis()
-                                    .child(detail),
+                                    .overflow_hidden()
+                                    .child(elided(detail, TextRole::Callout)),
                             ),
                     )
                     .child(
                         div()
                             .w(px(54.))
                             .text_right()
-                            .font_family("Segoe UI")
-                            .text_size(px(11.))
+                            .type_style(TextRole::Metadata)
+                            .numeric()
                             .text_color(rgb(t.faint))
                             .child(
                                 if total > 0 && category != Category::Applications && !cross_volume
@@ -191,9 +182,8 @@ impl PurgeView {
                         div()
                             .min_w(px(74.))
                             .text_right()
-                            .font_family("Segoe UI")
-                            .text_size(px(style::SECTION_SIZE))
-                            .font_weight(FontWeight::SEMIBOLD)
+                            .type_style(TextRole::SectionTitle)
+                            .numeric()
                             .child(if bytes > 0 {
                                 format_bytes(bytes)
                             } else if self.controller.operation() == Some(Operation::Scan) {
@@ -206,7 +196,7 @@ impl PurgeView {
         }
         let other = used.saturating_sub(accounted);
         let rest = div()
-            .rounded(px(14.))
+            .rounded(px(style::CARD_RADIUS))
             .border_1()
             .border_color(rgb(t.border))
             .bg(rgb(t.card))
@@ -216,33 +206,34 @@ impl PurgeView {
                     .id("other-space")
                     .flex()
                     .items_center()
-                    .gap(px(12.))
-                    .p(px(14.))
+                    .gap(px(style::SPACE_12))
+                    .px(px(style::ROW_PADDING))
+                    .py(px(style::SPACE_12))
                     .cursor_pointer()
                     .hover(move |e| e.bg(rgb(t.row_hover)))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.handle(platform::open_storage_settings(), cx)
                     }))
-                    .child(self.neutral_tile("info"))
+                    .child(self.neutral_tile("more"))
                     .child(
                         div()
                             .flex_1()
                             .min_w_0()
-                            .child(div().font_weight(FontWeight::SEMIBOLD).child("其他空间"))
+                            .child(div().type_style(TextRole::Headline).child("其他空间"))
                             .child(
                                 div()
-                                    .mt(px(2.))
-                                    .text_size(px(11.))
+                                    .mt(px(style::SPACE_2))
+                                    .type_style(TextRole::Callout)
                                     .text_color(rgb(t.muted))
-                                    .child("Windows、个人文件和 Purge 未分类的内容"),
+                                    .child("系统、个人文件和 Purge 未分类的内容"),
                             ),
                     )
                     .child(
                         div()
                             .w(px(54.))
                             .text_right()
-                            .font_family("Segoe UI")
-                            .text_size(px(11.))
+                            .type_style(TextRole::Metadata)
+                            .numeric()
                             .text_color(rgb(t.faint))
                             .child(if total > 0 {
                                 format!("{:.1}%", other as f64 / total as f64 * 100.)
@@ -254,34 +245,28 @@ impl PurgeView {
                         div()
                             .min_w(px(74.))
                             .text_right()
-                            .font_family("Segoe UI")
-                            .text_size(px(style::SECTION_SIZE))
-                            .font_weight(FontWeight::SEMIBOLD)
+                            .type_style(TextRole::SectionTitle)
+                            .numeric()
                             .child(format_bytes(other)),
                     ),
             )
-            .child(div().mx(px(16.)).h(px(0.5)).bg(rgb(t.border)))
+            .child(div().mx(px(style::SPACE_16)).h(px(0.5)).bg(rgb(t.border)))
             .child(
                 div()
                     .flex()
                     .items_center()
-                    .gap(px(12.))
-                    .p(px(14.))
-                    .child(
-                        div()
-                            .size(px(28.))
-                            .rounded(px(style::TILE_RADIUS))
-                            .border_1()
-                            .border_color(rgb(t.faint)),
-                    )
+                    .gap(px(style::SPACE_12))
+                    .px(px(style::ROW_PADDING))
+                    .py(px(style::SPACE_12))
+                    .child(icon("free-tile", t.chart_free, style::TILE_SIZE))
                     .child(
                         div()
                             .flex_1()
-                            .child(div().font_weight(FontWeight::SEMIBOLD).child("可用空间"))
+                            .child(div().type_style(TextRole::Headline).child("可用空间"))
                             .child(
                                 div()
-                                    .mt(px(2.))
-                                    .text_size(px(11.))
+                                    .mt(px(style::SPACE_2))
+                                    .type_style(TextRole::Callout)
                                     .text_color(rgb(t.muted))
                                     .child("可用于存储新文件"),
                             ),
@@ -290,9 +275,8 @@ impl PurgeView {
                         div()
                             .min_w(px(74.))
                             .text_right()
-                            .font_family("Segoe UI")
-                            .text_size(px(style::SECTION_SIZE))
-                            .font_weight(FontWeight::SEMIBOLD)
+                            .type_style(TextRole::SectionTitle)
+                            .numeric()
                             .child(format_bytes(self.controller.model.disk.free)),
                     ),
             );
@@ -307,26 +291,24 @@ impl PurgeView {
                 div()
                     .flex()
                     .flex_col()
-                    .gap(px(24.))
-                    .pb(px(24.))
+                    .gap(px(style::SPACE_24))
+                    .pb(px(style::SPACE_24))
                     .child(
                         div()
                             .child(
                                 div()
                                     .flex()
                                     .items_end()
-                                    .gap(px(8.))
+                                    .gap(px(style::SPACE_8))
                                     .child(
                                         div()
-                                            .font_family("Segoe UI")
-                                            .text_size(px(style::TOTAL_SIZE))
-                                            .font_weight(FontWeight::BOLD)
+                                            .type_style(TextRole::Total).numeric()
                                             .child(format!("{} 已用", format_storage_bytes(used))),
                                     )
                                     .child(
                                         div()
                                             .pb(px(3.))
-                                            .text_size(px(13.))
+                                            .type_style(TextRole::RowTitle).numeric()
                                             .text_color(rgb(t.muted))
                                             .child(format!("/ {}", format_storage_bytes(total))),
                                     )
@@ -334,7 +316,7 @@ impl PurgeView {
                                     .child(
                                         div()
                                             .pb(px(3.))
-                                            .text_size(px(13.))
+                                            .type_style(TextRole::RowTitle).numeric()
                                             .text_color(rgb(t.muted))
                                             .child(format!(
                                                 "{} 可用",
@@ -342,11 +324,11 @@ impl PurgeView {
                                             )),
                                     ),
                             )
-                            .child(div().mt(px(12.)).child(bar)),
+                            .child(div().mt(px(style::SPACE_12)).child(bar)),
                     )
                     .child(categories)
                     .child(rest)
-                    .child(div().text_size(px(11.)).text_color(rgb(t.faint)).child(
+                    .child(div().type_style(TextRole::Callout).text_color(rgb(t.muted)).child(
                         "文件默认移入回收站。手动清空回收站后释放空间；Purge 不会永久删除文件。",
                     )),
             )
@@ -354,22 +336,10 @@ impl PurgeView {
     }
 
     fn overview_tile(&self, category: Category) -> Div {
-        let color = if self.theme.dark {
-            match category {
-                Category::Caches => 0x3a9bd5,
-                Category::Developer => 0x1e78ba,
-                Category::LargeFiles => 0xe69f00,
-                Category::Applications => 0xd55e00,
-            }
-        } else {
-            match category {
-                Category::Caches => 0x4b83a5,
-                Category::Developer => 0x526f9c,
-                Category::LargeFiles => 0xa9812f,
-                Category::Applications => 0xad734f,
-            }
-        };
-        self.glossy_tile(category_icon(category), color)
+        self.glossy_tile(
+            filled_icon(category_icon(category)),
+            self.theme.tile_color(category),
+        )
     }
     fn neutral_tile(&self, glyph: &'static str) -> Div {
         self.glossy_tile(glyph, self.theme.neutral_tile)
@@ -388,7 +358,7 @@ impl PurgeView {
             .flex_shrink_0()
             .rounded(px(style::TILE_RADIUS))
             .border(px(0.5))
-            .border_color(rgba(0xffffff55))
+            .border_color(rgba(0xffffff38))
             .bg(linear_gradient(
                 180.,
                 linear_color_stop(rgb(mix(0xffffff, 0.22)), 0.),

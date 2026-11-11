@@ -1,8 +1,17 @@
 use super::*;
 impl PurgeView {
-    pub(crate) fn sidebar(&self, cx: &mut Context<Self>) -> Div {
+    pub(crate) fn sidebar(
+        &self,
+        divider_width: Pixels,
+        show_brand: bool,
+        cx: &mut Context<Self>,
+    ) -> Div {
         let t = self.theme;
-        let mut nav = div().flex().flex_col().gap(px(2.)).px(px(12.));
+        let mut nav = div()
+            .flex()
+            .flex_col()
+            .gap(px(style::SPACE_2))
+            .px(px(style::SPACE_12));
         for (index, (section, page, glyph, title)) in [
             ("", Page::Overview, "overview", "概览"),
             (
@@ -31,11 +40,11 @@ impl PurgeView {
             if !section.is_empty() {
                 nav = nav.child(
                     div()
-                        .pt(px(16.))
-                        .pb(px(4.))
-                        .px(px(8.))
+                        .pt(px(style::SPACE_12))
+                        .pb(px(style::SPACE_2))
+                        .px(px(style::SPACE_8))
+                        .type_style(TextRole::MetadataEmphasis)
                         .font_weight(FontWeight::SEMIBOLD)
-                        .text_size(px(11.))
                         .text_color(rgb(t.faint))
                         .child(section),
                 );
@@ -46,9 +55,9 @@ impl PurgeView {
                     .id(("nav", index))
                     .flex()
                     .items_center()
-                    .gap(px(8.))
+                    .gap(px(style::SPACE_8))
                     .h(px(30.))
-                    .px(px(8.))
+                    .px(px(style::SPACE_8))
                     .rounded(px(8.))
                     .bg(rgb(if active { t.selection } else { t.sidebar }))
                     .text_color(rgb(if active { t.selection_text } else { t.muted }))
@@ -62,7 +71,7 @@ impl PurgeView {
                     })
                     .on_click(cx.listener(move |this, _, w, cx| this.navigate(page, w, cx)))
                     .child(icon(
-                        glyph,
+                        if active { filled_icon(glyph) } else { glyph },
                         if active { t.selection_text } else { t.faint },
                         16.,
                     ))
@@ -84,8 +93,8 @@ impl PurgeView {
                         |e, c| {
                             e.child(
                                 div()
-                                    .font_family("Segoe UI")
-                                    .text_size(px(11.))
+                                    .type_style(TextRole::MetadataEmphasis)
+                                    .numeric()
                                     .text_color(rgb(if active && !t.dark {
                                         t.selection_text
                                     } else {
@@ -101,7 +110,12 @@ impl PurgeView {
                     ),
             );
         }
-        let mut utility = div().px(px(12.)).pb(px(8.)).flex().flex_col().gap(px(2.));
+        let mut utility = div()
+            .px(px(style::SPACE_12))
+            .pb(px(style::SPACE_8))
+            .flex()
+            .flex_col()
+            .gap(px(style::SPACE_2));
         for (index, (page, glyph, title)) in [
             (Page::History, "history", "清理历史"),
             (Page::Settings, "settings", "设置"),
@@ -115,11 +129,11 @@ impl PurgeView {
                 div()
                     .id(("utility", index))
                     .h(px(30.))
-                    .px(px(8.))
+                    .px(px(style::SPACE_8))
                     .rounded(px(8.))
                     .flex()
                     .items_center()
-                    .gap(px(8.))
+                    .gap(px(style::SPACE_8))
                     .bg(rgb(if active { t.selection } else { t.sidebar }))
                     .cursor_pointer()
                     .hover(move |e| {
@@ -131,7 +145,7 @@ impl PurgeView {
                     })
                     .on_click(cx.listener(move |this, _, w, cx| this.navigate(page, w, cx)))
                     .child(icon(
-                        glyph,
+                        if active { filled_icon(glyph) } else { glyph },
                         if active { t.selection_text } else { t.faint },
                         16.,
                     ))
@@ -154,42 +168,30 @@ impl PurgeView {
             .flex()
             .flex_col()
             .bg(rgb(t.sidebar))
-            .border_r_1()
-            .border_color(rgb(t.border))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(8.))
-                    .px(px(12.))
-                    .pt(px(20.))
-                    .pb(px(24.))
-                    .child(
-                        img(ImageSource::Resource(Resource::Embedded(
-                            "purge.png".into(),
-                        )))
-                        .size(px(22.))
-                        .rounded(px(4.)),
-                    )
-                    .child(
-                        div()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_size(px(style::SECTION_SIZE))
-                            .child("Purge"),
-                    ),
-            )
+            .border_r(divider_width)
+            .border_color(rgb(t.chrome_edge))
+            .pt(px(style::SPACE_12))
+            .when(show_brand, |e| {
+                e.child(
+                    div()
+                        .px(px(style::SPACE_16))
+                        .pt(px(style::SPACE_8))
+                        .pb(px(style::SPACE_24))
+                        .child(chrome::brand(t)),
+                )
+            })
             .child(nav)
             .child(div().flex_1().min_h(px(16.)))
             .child(utility)
             .child(
-                div().px(px(12.)).pb(px(12.)).child(
+                div().px(px(style::SPACE_12)).pb(px(style::SPACE_12)).child(
                     div()
                         .id("sidebar-trash")
                         .flex()
                         .items_center()
-                        .gap(px(8.))
-                        .p(px(12.))
-                        .rounded(px(14.))
+                        .gap(px(style::SPACE_8))
+                        .p(px(style::SPACE_12))
+                        .rounded(px(style::CARD_RADIUS))
                         .bg(rgb(t.secondary))
                         .cursor_pointer()
                         .hover(move |e| e.bg(rgb(t.fill_hover)))
@@ -198,13 +200,16 @@ impl PurgeView {
                         }))
                         .child(icon("trash", t.muted, 14.))
                         .child(
-                            div().text_size(px(12.)).text_color(rgb(t.muted)).child(
-                                self.controller
-                                    .model
-                                    .trash_bytes
-                                    .map(|bytes| format!("{} 已在回收站", format_bytes(bytes)))
-                                    .unwrap_or_else(|| "打开 Windows 回收站".into()),
-                            ),
+                            div()
+                                .type_style(TextRole::Callout)
+                                .text_color(rgb(t.muted))
+                                .child(
+                                    self.controller
+                                        .model
+                                        .trash_bytes
+                                        .map(|bytes| format!("{} 已在回收站", format_bytes(bytes)))
+                                        .unwrap_or_else(|| "打开回收站".into()),
+                                ),
                         ),
                 ),
             )

@@ -47,10 +47,7 @@ impl LocalRepository {
 }
 
 pub fn data_dir() -> PathBuf {
-    std::env::var_os("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| std::env::temp_dir().join("purge-local"))
-        .join("Purge")
+    crate::platform::user_data_dir().join("Purge")
 }
 fn read_json<T: DeserializeOwned + Default>(path: &Path) -> Result<T> {
     match fs::read(path) {

@@ -1,6 +1,29 @@
 use purge_core::{Category, ScanOptions};
 use purge_engine::settings::StoredSettings;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AppLayout {
+    #[default]
+    Cards,
+    List,
+}
+
+impl AppLayout {
+    pub fn from_key(key: &str) -> Self {
+        match key {
+            "list" => Self::List,
+            _ => Self::Cards,
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Cards => "cards",
+            Self::List => "list",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Filter {
     All,
@@ -73,6 +96,8 @@ pub struct Preferences {
     pub scan: ScanOptions,
     pub dark: bool,
     pub scan_on_start: bool,
+    pub app_layout: AppLayout,
+    pub minimize_to_tray: bool,
     caches: CategoryPreferences,
     developer: CategoryPreferences,
 }
@@ -87,6 +112,8 @@ impl From<StoredSettings> for Preferences {
             scan: stored.scan,
             dark: stored.dark,
             scan_on_start: stored.scan_on_start,
+            app_layout: AppLayout::from_key(&stored.app_layout),
+            minimize_to_tray: stored.minimize_to_tray,
             caches: CategoryPreferences {
                 filter: Filter::from_key(&stored.cache_filter),
                 sort: Sort::from_key(&stored.cache_sort),
@@ -104,6 +131,8 @@ impl Preferences {
             scan: self.scan.clone(),
             dark: self.dark,
             scan_on_start: self.scan_on_start,
+            app_layout: self.app_layout.key().into(),
+            minimize_to_tray: self.minimize_to_tray,
             cache_filter: self.caches.filter.key().into(),
             developer_filter: self.developer.filter.key().into(),
             cache_sort: self.caches.sort.key().into(),

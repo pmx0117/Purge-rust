@@ -1,8 +1,14 @@
 use super::*;
 pub fn run() -> Result<()> {
     Application::new()
+        .with_quit_mode(QuitMode::Explicit)
         .with_assets(assets::Assets)
         .run(|cx: &mut App| {
+            #[cfg(target_os = "macos")]
+            purge::macos_window::set_application_icon(include_bytes!(concat!(
+                env!("OUT_DIR"),
+                "/purge.png"
+            )));
             if let Err(error) = cx
                 .text_system()
                 .add_fonts(vec![Cow::Borrowed(include_bytes!(concat!(
@@ -28,50 +34,29 @@ pub fn run() -> Result<()> {
                 KeyBinding::new("ctrl-alt-3", ReviewItems, None),
                 KeyBinding::new("tab", NextControl, None),
                 KeyBinding::new("shift-tab", PreviousControl, None),
+                KeyBinding::new("ctrl-m", MinimizeToTray, None),
             ]);
-            cx.on_window_closed(|cx| {
-                if cx.windows().is_empty() {
-                    cx.quit();
-                }
-            })
-            .detach();
-            let bounds = Bounds::centered(None, size(px(980.), px(700.)), cx);
-            if let Err(e) = cx.open_window(
-                WindowOptions {
-                    window_bounds: Some(WindowBounds::Windowed(bounds)),
-                    window_min_size: Some(size(px(900.), px(600.))),
-                    titlebar: Some(TitlebarOptions {
-                        title: Some("Purge · Windows".into()),
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                },
-                |w, cx| {
-                    let app = cx.new(|cx| {
-                        let app = PurgeView::new(cx);
-                        app.focus.focus(w);
-                        app
-                    });
-                    let weak = app.downgrade();
-                    w.on_window_should_close(cx, move |_, cx| {
-                        weak.update(cx, |app, cx| {
-                            if !app.controller.can_close() {
-                                app.controller.model.notice =
-                                    Some("正在移入回收站，请等待本次操作完成后再关闭。".into());
-                                cx.notify();
-                                false
-                            } else {
-                                true
-                            }
-                        })
-                        .unwrap_or(true)
-                    });
-                    app
-                },
-            ) {
-                eprintln!("无法打开窗口：{e:#}");
-                cx.quit();
-            }
+            #[cfg(target_os = "macos")]
+            cx.bind_keys([
+                KeyBinding::new("cmd-r", Rescan, None),
+                KeyBinding::new("cmd-shift-r", ScanAll, None),
+                KeyBinding::new("cmd-f", Search, None),
+                KeyBinding::new("cmd-1", Overview, None),
+                KeyBinding::new("cmd-2", Caches, None),
+                KeyBinding::new("cmd-3", Developer, None),
+                KeyBinding::new("cmd-4", LargeFiles, None),
+                KeyBinding::new("cmd-5", Applications, None),
+                KeyBinding::new("cmd-m", MinimizeToTray, None),
+                KeyBinding::new("cmd-q", QuitApplication, None),
+            ]);
+            cx.on_action(|_: &MinimizeToTray, cx| {
+                shell::request(purge::lifecycle::Request::Minimize, cx)
+            });
+            cx.on_action(|_: &QuitApplication, cx| {
+                shell::request(purge::lifecycle::Request::Quit, cx)
+            });
+            let view = cx.new(PurgeView::new);
+            shell::Shell::install(view, cx);
             cx.activate(true);
         });
     Ok(())

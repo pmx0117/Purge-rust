@@ -4,7 +4,11 @@ use tempfile::TempDir;
 #[test]
 fn unrelated_temporary_path_does_not_break_preference_save() {
     let directory = TempDir::new().unwrap();
-    let data = directory.path().join("Purge");
+    let data = if cfg!(target_os = "macos") {
+        directory.path().join("Library/Application Support/Purge")
+    } else {
+        directory.path().join("Purge")
+    };
     fs::create_dir_all(data.join("settings.json.tmp")).unwrap();
     let output = Command::new(std::env::current_exe().unwrap())
         .args([
@@ -14,6 +18,8 @@ fn unrelated_temporary_path_does_not_break_preference_save() {
             "--nocapture",
         ])
         .env("LOCALAPPDATA", directory.path())
+        .env("XDG_DATA_HOME", directory.path())
+        .env("HOME", directory.path())
         .output()
         .unwrap();
     assert!(
@@ -32,7 +38,7 @@ fn unrelated_temporary_path_does_not_break_preference_save() {
 }
 
 #[test]
-#[ignore = "Runs in its own process with an isolated LOCALAPPDATA"]
+#[ignore = "Runs in a subprocess with isolated platform data directories"]
 fn save_preferences_probe() {
     let settings = purge_engine::settings::StoredSettings {
         scan: purge_core::ScanOptions {
@@ -112,4 +118,45 @@ fn cleanup_history_round_trips_through_its_own_file() {
     assert_eq!(history[0].failed, 1);
     assert_eq!(history[0].bytes, 1024);
     assert!(!directory.path().join("settings.json").exists());
+}
+
+#[test]
+fn application_layout_choice_survives_other_preference_saves() {
+    let directory = TempDir::new().unwrap();
+    let repository = purge_engine::storage::LocalRepository::new(directory.path());
+    std::fs::write(
+        directory.path().join("settings.json"),
+        r#"{"app_layout":"list","dark":true}"#,
+    )
+    .unwrap();
+    let mut settings = repository.load_settings().unwrap();
+    settings.dark = false;
+    repository.save_settings(&settings).unwrap();
+    let saved: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(directory.path().join("settings.json")).unwrap())
+            .unwrap();
+    assert_eq!(
+        saved.get("app_layout").and_then(|value| value.as_str()),
+        Some("list")
+    );
+}
+
+#[test]
+fn tray_preference_survives_unrelated_setting_updates() {
+    let directory = TempDir::new().unwrap();
+    let repository = purge_engine::storage::LocalRepository::new(directory.path());
+    fs::write(
+        directory.path().join("settings.json"),
+        r#"{"minimize_to_tray":false}"#,
+    )
+    .unwrap();
+    let mut settings = repository.load_settings().unwrap();
+    settings.dark = true;
+    repository.save_settings(&settings).unwrap();
+    let saved: serde_json::Value =
+        serde_json::from_slice(&fs::read(directory.path().join("settings.json")).unwrap()).unwrap();
+    assert_eq!(
+        saved.get("minimize_to_tray"),
+        Some(&serde_json::Value::Bool(false))
+    );
 }

@@ -17,15 +17,21 @@ impl PurgeView {
             .flex_shrink_0()
             .flex()
             .flex_col()
-            .gap(px(12.))
+            .gap(px(style::SPACE_12))
             .when(show_search, |e| {
                 e.child(self.result_search(category, groups.len(), window, cx))
             })
             .when(category != Category::Applications, |e| {
-                e.child(self.result_filter_tabs(category, cx))
-            })
-            .when(category == Category::LargeFiles, |e| {
-                e.child(self.result_file_types(cx))
+                e.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(style::SPACE_12))
+                        .child(self.result_filter_tabs(category, cx))
+                        .when(category == Category::LargeFiles, |e| {
+                            e.child(div().flex_1()).child(self.result_file_types(cx))
+                        }),
+                )
             })
             .child(self.result_selection(category, summary, query, cx));
         div()
@@ -49,7 +55,7 @@ impl PurgeView {
         div()
             .flex()
             .items_center()
-            .gap(px(8.))
+            .gap(px(style::SPACE_8))
             .child(
                 div()
                     .flex_1()
@@ -65,7 +71,7 @@ impl PurgeView {
                     })
                     .flex()
                     .items_center()
-                    .gap(px(8.))
+                    .gap(px(style::SPACE_8))
                     .child(icon("search", t.faint, 13.))
                     .child(self.search.clone()),
             )
@@ -88,7 +94,7 @@ impl PurgeView {
             .flex()
             .flex_wrap()
             .items_center()
-            .gap(px(4.))
+            .gap(px(style::SPACE_4))
             .children(
                 self.controller
                     .model
@@ -106,73 +112,58 @@ impl PurgeView {
     ) -> Stateful<Div> {
         let t = self.theme;
         let filter = tab.filter;
+        let (background, foreground) = if tab.selected {
+            match filter {
+                Filter::Safe => (t.safe_bg, t.safe),
+                Filter::Review => (t.review_bg, t.review),
+                _ => (t.raised, t.text),
+            }
+        } else {
+            (t.fill, t.muted)
+        };
         div()
             .id(("filter", index))
             .flex()
             .items_center()
-            .gap(px(6.))
-            .px(px(12.))
-            .py(px(6.))
+            .gap(px(style::SPACE_6))
+            .px(px(style::SPACE_12))
+            .py(px(style::SPACE_6))
             .rounded_full()
             .border_1()
             .border_color(rgb(t.border))
-            .bg(rgb(t.fill))
-            .text_color(rgb(t.muted))
-            .text_size(px(13.))
-            .font_weight(FontWeight::NORMAL)
-            .when(tab.selected, |e| {
-                e.font_weight(FontWeight::SEMIBOLD)
-                    .bg(rgb(t.raised))
-                    .text_color(rgb(t.text))
-                    .when(!t.dark, |e| {
-                        e.bg(rgb(t.selection)).text_color(rgb(t.selection_text))
-                    })
-                    .when(filter == Filter::Safe, |e| {
-                        e.bg(rgb(t.safe_bg)).text_color(rgb(t.safe))
-                    })
-                    .when(filter == Filter::Review, |e| {
-                        e.bg(rgb(t.review_bg)).text_color(rgb(t.review))
-                    })
-            })
-            .when(!tab.selected, |e| {
-                e.when(t.dark, |e| e.when(tab.count == 0, |e| e.opacity(0.45)))
-            })
+            .bg(rgb(background))
+            .type_style(TextRole::Body)
+            .text_color(rgb(foreground))
+            .when(tab.selected, |e| e.font_weight(FontWeight::SEMIBOLD))
+            .when(!tab.selected && tab.count == 0, |e| e.opacity(0.45))
             .cursor_pointer()
             .hover(move |e| e.border_color(rgb(t.border_strong)))
             .on_click(cx.listener(move |this, _, _, cx| this.set_filter(filter, cx)))
-            .child(svg().path(tab.glyph).size(px(12.)))
+            .child(icon(tab.glyph, foreground, 14.))
             .child(tab.label)
-            .child(div().font_family("Segoe UI").child(tab.count.to_string()))
+            .child(
+                div()
+                    .type_style(TextRole::RowTitle)
+                    .numeric()
+                    .text_color(rgb(if tab.selected { foreground } else { t.faint }))
+                    .child(tab.count.to_string()),
+            )
     }
     fn result_file_types(&self, cx: &mut Context<Self>) -> Div {
-        let t = self.theme;
-        div().flex().flex_wrap().gap(px(4.)).children(
-            std::iter::once(None)
-                .chain(FileKind::all().map(Some))
-                .enumerate()
-                .map(|(index, kind)| {
-                    div()
-                        .id(("kind", index))
-                        .px(px(10.))
-                        .py(px(4.))
-                        .rounded_full()
-                        .bg(rgb(t.fill))
-                        .text_size(px(11.))
-                        .text_color(rgb(t.muted))
-                        .when(self.controller.model.kind_filter == kind, |e| {
-                            e.bg(rgb(t.raised))
-                                .text_color(rgb(t.text))
-                                .when(!t.dark, |e| {
-                                    e.bg(rgb(t.selection)).text_color(rgb(t.selection_text))
-                                })
-                        })
-                        .cursor_pointer()
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.controller.model.kind_filter = kind;
-                            cx.notify();
-                        }))
-                        .child(kind.map(FileKind::label).unwrap_or("所有类型"))
-                }),
+        div().child(
+            value_control(
+                "file-type",
+                self.controller
+                    .model
+                    .kind_filter
+                    .map(FileKind::label)
+                    .unwrap_or("所有类型"),
+                self.theme,
+                true,
+            )
+            .on_click(cx.listener(|this, event: &ClickEvent, _, cx| {
+                this.open_picker(Picker::FileType, event.position(), cx);
+            })),
         )
     }
     fn result_selection(
@@ -188,16 +179,16 @@ impl PurgeView {
         div()
             .flex()
             .items_center()
-            .gap(px(8.))
-            .pt(px(8.))
-            .pb(px(12.))
+            .gap(px(style::SPACE_8))
+            .pt(px(style::SPACE_8))
+            .pb(px(style::SPACE_12))
             .when(category != Category::Applications, |e| {
                 e.child(
                     div()
                         .id("select-all")
                         .flex()
                         .items_center()
-                        .gap(px(8.))
+                        .gap(px(style::SPACE_8))
                         .cursor_pointer()
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.controller.toggle_visible(&query);
@@ -222,16 +213,16 @@ impl PurgeView {
             .when(category == Category::Applications, |e| {
                 e.child(
                     div()
-                        .text_size(px(11.))
+                        .type_style(TextRole::Metadata)
                         .text_color(rgb(t.muted))
-                        .child("卸载由 Windows 官方设置处理"),
+                        .child("卸载由系统应用管理器处理"),
                 )
             })
             .when(summary.show_review_link, |e| {
                 e.child(
                     div()
                         .id("also-review")
-                        .text_size(px(12.))
+                        .type_style(TextRole::Callout)
                         .text_color(rgb(t.muted))
                         .cursor_pointer()
                         .hover(move |e| e.text_color(rgb(t.text)))
@@ -256,9 +247,7 @@ impl PurgeView {
                     true,
                 )
                 .on_click(cx.listener(|this, event: &ClickEvent, _, cx| {
-                    this.menu_position = event.position();
-                    this.sort_menu = !this.sort_menu;
-                    cx.notify();
+                    this.open_picker(Picker::Sort, event.position(), cx);
                 })),
             )
     }
@@ -293,17 +282,16 @@ impl PurgeView {
             .flex_col()
             .items_center()
             .justify_center()
-            .gap(px(12.))
+            .gap(px(style::SPACE_12))
             .child(icon(category_icon(category), t.faint, 32.))
             .child(
                 div()
-                    .text_size(px(20.))
-                    .font_weight(FontWeight::SEMIBOLD)
+                    .type_style(TextRole::Title)
                     .child(empty_title(self.busy())),
             )
             .child(
                 div()
-                    .text_size(px(12.))
+                    .type_style(TextRole::Callout)
                     .text_color(rgb(t.muted))
                     .child(empty_hint(category)),
             )
@@ -313,7 +301,7 @@ impl PurgeView {
         let t = self.theme;
         let item = &group.items[0];
         let id = group.id;
-        let ids: Vec<_> = group.items.iter().map(|i| i.id).collect();
+        let ids: Vec<_> = group.items.iter().map(|item| item.id).collect();
         let selected = ids
             .iter()
             .all(|id| self.controller.model.selected.contains(id));
@@ -322,65 +310,24 @@ impl PurgeView {
         let context_active = self
             .context_item
             .as_ref()
-            .is_some_and(|(context, _)| context.id == id);
-        let mut leading = div()
-            .size(px(28.))
-            .flex_shrink_0()
-            .flex()
-            .items_center()
-            .justify_center();
-        if let Some(brand) = brand_name(&group.name) {
-            leading = leading.child(
-                img(ImageSource::Resource(Resource::Embedded(
-                    format!(
-                        "brand/{}{}",
-                        brand,
-                        if self.theme.dark { "" } else { "-light" }
-                    )
-                    .into(),
-                )))
-                .size(px(28.)),
-            );
-        } else {
-            leading = leading.child(icon(
-                if is_app {
-                    "apps"
-                } else if item.category() == Category::LargeFiles {
-                    "file"
-                } else {
-                    "folder"
-                },
-                t.muted,
-                18.,
-            ));
-        }
+            .is_some_and(|(item, _)| item.id == id);
         div()
             .id(("item", id))
-            .h(px(88.))
-            .pb(px(8.))
+            .h(px(style::SCAN_ROW_HEIGHT))
+            .py(px(style::SPACE_4))
             .child(
                 div()
                     .id(("row", id))
                     .size_full()
                     .flex()
                     .items_center()
-                    .gap(px(12.))
-                    .px(px(14.))
-                    .py(px(12.))
-                    .rounded(px(14.))
+                    .gap(px(style::SPACE_12))
+                    .px(px(style::ROW_PADDING))
+                    .py(px(style::SPACE_12))
+                    .rounded(px(style::CARD_RADIUS))
                     .bg(rgb(if context_active { t.row_context } else { t.row }))
-                    .when(!t.dark, |e| {
-                        e.border(px(0.5))
-                            .border_color(rgb(t.border))
-                            .hover(move |e| {
-                                e.bg(rgb(if context_active {
-                                    t.row_context
-                                } else {
-                                    t.row_hover
-                                }))
-                            })
-                    })
                     .when(context_active, |e| e.border_1().border_color(rgb(t.border)))
+                    .when(!is_app && !self.busy(), |e| e.cursor_pointer())
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.controller.toggle_group(&ids);
                         cx.notify();
@@ -389,87 +336,114 @@ impl PurgeView {
                         MouseButton::Right,
                         cx.listener(move |this, event: &MouseDownEvent, _, cx| {
                             this.context_item = Some((for_menu.clone(), event.position));
-                            this.sort_menu = false;
+                            this.picker = None;
                             cx.notify();
                         }),
                     )
                     .when(!is_app, |e| e.child(self.checkbox(selected)))
-                    .child(leading)
+                    .child(self.result_icon(&group))
                     .child(
                         div()
                             .flex_1()
                             .min_w_0()
+                            .h(px(style::SCAN_TEXT_HEIGHT))
+                            .flex()
+                            .flex_col()
+                            .justify_center()
                             .child(
                                 div()
-                                    .text_size(px(13.))
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .text_ellipsis()
-                                    .child(group.name.clone()),
+                                    .type_style(TextRole::Headline)
+                                    .overflow_hidden()
+                                    .child(elided(group.name.clone(), TextRole::Headline)),
                             )
                             .child(
                                 div()
-                                    .mt(px(4.))
-                                    .text_size(px(if t.dark { 11. } else { 12. }))
-                                    .line_height(px(if t.dark { 15. } else { 16. }))
+                                    .mt(px(style::SPACE_4))
+                                    .type_style(TextRole::Metadata)
                                     .text_color(rgb(t.muted))
                                     .line_clamp(2)
                                     .child(item.description.clone()),
                             ),
                     )
-                    .child(
-                        div()
-                            .flex_shrink_0()
-                            .min_w(px(86.))
-                            .flex()
-                            .flex_col()
-                            .items_end()
-                            .gap(px(8.))
-                            .child(
-                                div()
-                                    .font_family("Segoe UI")
-                                    .text_size(px(if t.dark { 11. } else { 12. }))
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .child(if group.bytes() > 0 {
-                                        format_bytes(group.bytes())
-                                    } else {
-                                        "大小未知".into()
-                                    }),
-                            )
-                            .when(!is_app, |e| {
-                                e.child(tag(
-                                    if item.safety == Safety::Safe {
-                                        "可安全清理"
-                                    } else {
-                                        "需要确认"
-                                    },
-                                    if item.safety == Safety::Safe {
-                                        t.safe
-                                    } else {
-                                        t.review
-                                    },
-                                    if item.safety == Safety::Safe {
-                                        t.safe_bg
-                                    } else {
-                                        t.review_bg
-                                    },
-                                ))
-                            })
-                            .when(is_app, |e| {
-                                e.child(
-                                    div()
-                                        .id(("uninstall", id))
-                                        .text_size(px(if t.dark { 11. } else { 12. }))
-                                        .text_color(rgb(t.muted))
-                                        .on_click(cx.listener(|this, _, _, cx| {
-                                            cx.stop_propagation();
-                                            this.handle(platform::open_apps_settings(), cx);
-                                        }))
-                                        .child("管理 / 卸载"),
-                                )
-                            }),
-                    ),
+                    .child(self.result_metadata(&group, cx)),
             )
             .into_any_element()
+    }
+
+    fn result_icon(&self, group: &ItemGroup) -> Div {
+        let t = self.theme;
+        let item = &group.items[0];
+        let leading = div()
+            .size(px(style::TILE_SIZE))
+            .flex_shrink_0()
+            .flex()
+            .items_center()
+            .justify_center();
+        if let Some(brand) = brand_name(&group.name) {
+            return leading.child(
+                img(ImageSource::Resource(Resource::Embedded(
+                    format!("brand/{}{}", brand, if t.dark { "" } else { "-light" }).into(),
+                )))
+                .size(px(style::TILE_SIZE)),
+            );
+        }
+        let glyph = if item.is_application() {
+            "apps"
+        } else if item.category() == Category::LargeFiles {
+            "file"
+        } else {
+            "folder"
+        };
+        leading.child(icon(glyph, t.muted, 18.))
+    }
+
+    fn result_metadata(&self, group: &ItemGroup, cx: &mut Context<Self>) -> Div {
+        let t = self.theme;
+        let item = &group.items[0];
+        let safe = item.safety == Safety::Safe;
+        div()
+            .flex_shrink_0()
+            .min_w(px(72.))
+            .flex()
+            .flex_col()
+            .items_end()
+            .gap(px(style::SPACE_8))
+            .child(
+                div()
+                    .type_style(TextRole::MetadataEmphasis)
+                    .numeric()
+                    .child(if group.bytes() > 0 {
+                        format_bytes(group.bytes())
+                    } else {
+                        "大小未知".into()
+                    }),
+            )
+            .when(!item.is_application(), |e| {
+                e.child(tag(
+                    if safe {
+                        "可安全清理"
+                    } else {
+                        "需要确认"
+                    },
+                    if safe { t.safe } else { t.review },
+                    if safe { t.safe_bg } else { t.review_bg },
+                ))
+            })
+            .when(item.is_application(), |e| {
+                e.child(
+                    div()
+                        .id(("uninstall", group.id))
+                        .type_style(TextRole::Metadata)
+                        .text_color(rgb(t.muted))
+                        .cursor_pointer()
+                        .hover(move |e| e.text_color(rgb(t.text)))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            cx.stop_propagation();
+                            this.handle(platform::open_apps_settings(), cx);
+                        }))
+                        .child("管理 / 卸载"),
+                )
+            })
     }
 
     pub(in crate::ui) fn history_view(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -481,30 +455,29 @@ impl PurgeView {
             .iter()
             .map(|h| h.bytes)
             .sum::<u64>();
-        let mut list = div().flex().flex_col().gap_3().child(
+        let mut list = div().flex().flex_col().gap(px(style::SPACE_12)).child(
             div()
                 .bg(rgb(t.card))
                 .border_1()
                 .border_color(rgb(t.border))
-                .rounded(px(14.))
-                .p_6()
+                .rounded(px(style::CARD_RADIUS))
+                .p(px(style::SPACE_24))
                 .flex()
                 .items_center()
-                .gap_5()
+                .gap(px(style::SPACE_16))
                 .child(icon("history", t.safe, 28.))
                 .child(
                     div()
                         .flex_1()
                         .child(
                             div()
-                                .font_family("Segoe UI")
-                                .text_size(px(29.))
-                                .font_weight(FontWeight::SEMIBOLD)
+                                .type_style(TextRole::Total)
+                                .numeric()
                                 .child(format_bytes(total)),
                         )
                         .child(
                             div()
-                                .text_size(px(12.))
+                                .type_style(TextRole::Callout)
                                 .text_color(rgb(t.muted))
                                 .child(format!(
                                     "累计移入回收站 · {} 次操作",
@@ -521,7 +494,7 @@ impl PurgeView {
         if self.controller.model.history.is_empty() {
             list = list.child(
                 div()
-                    .p_8()
+                    .p(px(style::SPACE_32))
                     .text_color(rgb(t.muted))
                     .child("还没有清理记录。完成第一次清理后，记录会显示在这里。"),
             );
@@ -531,11 +504,11 @@ impl PurgeView {
                 div()
                     .id(("history-entry", index))
                     .bg(rgb(t.card))
-                    .rounded(px(4.))
-                    .p_5()
+                    .rounded(px(style::CARD_RADIUS))
+                    .p(px(style::SPACE_16))
                     .flex()
                     .items_center()
-                    .gap_4()
+                    .gap(px(style::SPACE_16))
                     .child(icon("check", t.safe, 16.))
                     .child(
                         div()
@@ -543,8 +516,8 @@ impl PurgeView {
                             .child(format!("{} 项已移入回收站", entry.moved))
                             .child(
                                 div()
-                                    .mt_1()
-                                    .text_size(px(12.))
+                                    .mt(px(style::SPACE_4))
+                                    .type_style(TextRole::Callout)
                                     .text_color(rgb(t.faint))
                                     .child(entry.time.clone()),
                             ),
@@ -568,7 +541,7 @@ impl PurgeView {
             .flex_1()
             .min_h_0()
             .overflow_y_scroll()
-            .pb_5()
+            .pb(px(style::SPACE_16))
             .child(list)
             .into_any_element()
     }

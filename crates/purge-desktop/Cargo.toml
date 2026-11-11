@@ -3,11 +3,11 @@ name = "purge"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "A local-first Windows disk cleaner, built with Rust and GPUI"
+description = "A local-first desktop disk cleaner, built with Rust and GPUI"
 
 [features]
 default = ["desktop"]
-desktop = ["dep:gpui", "dep:smol", "dep:unicode-segmentation", "dep:raw-window-handle"]
+desktop = ["dep:gpui", "dep:smol", "dep:raw-window-handle", "dep:image", "dep:tray-icon", "dep:zbus", "dep:objc2-app-kit", "dep:objc2-foundation", "dep:objc2"]
 
 [dependencies]
 purge-core.workspace = true
@@ -16,11 +16,14 @@ anyhow.workspace = true
 chrono.workspace = true
 gpui = { workspace = true, optional = true }
 smol = { workspace = true, optional = true }
-unicode-segmentation = { workspace = true, optional = true }
+unicode-segmentation.workspace = true
 raw-window-handle = { workspace = true, optional = true }
+image = { workspace = true, optional = true }
+tray-icon = { workspace = true, optional = true }
 
 [build-dependencies]
 embed-resource.workspace = true
+resvg.workspace = true
 
 [[bin]]
 name = "purge"
@@ -28,7 +31,17 @@ path = "src/main.rs"
 required-features = ["desktop"]
 
 [target.'cfg(windows)'.dependencies]
-windows = {workspace=true,features=["Win32_Graphics_Dwm","Win32_Foundation"]}
+gpui = { workspace = true, optional = true, features = ["windows-manifest"] }
+windows = {workspace=true,features=["Win32_Graphics_Dwm","Win32_Foundation","Win32_UI_WindowsAndMessaging","Win32_UI_HiDpi","Win32_System_LibraryLoader"]}
+
+[target.'cfg(target_os = "linux")'.dependencies]
+gpui = { workspace = true, optional = true, features = ["wayland", "x11"] }
+zbus = { version = "5", default-features = false, features = ["async-io", "blocking-api"], optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSResponder", "NSView", "NSWindow", "NSApplication", "NSImage"], optional = true }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSData"], optional = true }
+objc2 = { version = "0.6", optional = true }
 
 [dev-dependencies]
 tempfile.workspace=true

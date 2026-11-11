@@ -42,11 +42,44 @@ fn volume_space(root: &[u16]) -> Result<DiskInfo> {
         name: String::from_utf16_lossy(&root[..end]),
         total,
         free,
+        volume_id: None,
     })
 }
 #[cfg(not(windows))]
 pub fn disk_info() -> Result<DiskInfo> {
-    Ok(DiskInfo::default())
+    use std::{
+        ffi::CString,
+        os::unix::{ffi::OsStrExt, fs::MetadataExt},
+    };
+    let home = super::home_dir().canonicalize()?;
+    let device = std::fs::metadata(&home)?.dev();
+    let mut root = home.clone();
+    while let Some(parent) = root.parent() {
+        if std::fs::metadata(parent)?.dev() != device {
+            break;
+        }
+        root = parent.to_owned();
+    }
+    let name = CString::new(home.as_os_str().as_bytes())?;
+    let mut stats = std::mem::MaybeUninit::<libc::statvfs>::uninit();
+    if unsafe { libc::statvfs(name.as_ptr(), stats.as_mut_ptr()) } != 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    let stats = unsafe { stats.assume_init() };
+    #[cfg(target_os = "macos")]
+    let (blocks, available, size) = (
+        u64::from(stats.f_blocks),
+        u64::from(stats.f_bavail),
+        u64::from(stats.f_frsize),
+    );
+    #[cfg(not(target_os = "macos"))]
+    let (blocks, available, size) = (stats.f_blocks, stats.f_bavail, stats.f_frsize);
+    Ok(DiskInfo {
+        name: root.to_string_lossy().into_owned(),
+        total: blocks.saturating_mul(size),
+        free: available.saturating_mul(size),
+        volume_id: Some(device),
+    })
 }
 
 #[cfg(windows)]
@@ -66,5 +99,14 @@ pub fn trash_bytes() -> Result<Option<u64>> {
 }
 #[cfg(not(windows))]
 pub fn trash_bytes() -> Result<Option<u64>> {
-    Ok(None)
+    let root = if cfg!(target_os = "macos") {
+        super::home_dir().join(".Trash")
+    } else {
+        super::user_data_dir().join("Trash/files")
+    };
+    if !root.exists() {
+        return Ok(Some(0));
+    }
+    let state = crate::scanner::measure(&root, &std::sync::atomic::AtomicBool::new(false));
+    Ok(state.is_complete().then_some(state.bytes))
 }

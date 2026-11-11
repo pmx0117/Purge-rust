@@ -8,7 +8,7 @@ use std::{
     fs,
     path::Path,
     sync::atomic::{AtomicBool, Ordering},
-    time::Duration,
+    time::SystemTime,
 };
 use walkdir::{DirEntry, WalkDir};
 pub fn project_artifact(path: &Path) -> bool {
@@ -87,7 +87,10 @@ fn scan_project_entry(entry: DirEntry, collector: &mut ScanCollector<'_>) {
     }
     collector.progress(format!("正在检查项目 {}", project.display()));
     let state = measure(project, collector.cancel);
-    if !project_stale(&state, collector.settings) {
+    if !collector
+        .settings
+        .project_is_stale(&state, SystemTime::now())
+    {
         return;
     }
     let name = format!(
@@ -108,11 +111,4 @@ fn scan_project_entry(entry: DirEntry, collector: &mut ScanCollector<'_>) {
 }
 fn project_locked(project: &Path) -> bool {
     project.join(".git/index.lock").exists() || project.join(".purge-keep").exists()
-}
-fn project_stale(state: &purge_core::Footprint, settings: &ScanOptions) -> bool {
-    state
-        .newest
-        .and_then(|time| time.elapsed().ok())
-        .unwrap_or_default()
-        >= Duration::from_secs(settings.stale_project_days.saturating_mul(86400))
 }

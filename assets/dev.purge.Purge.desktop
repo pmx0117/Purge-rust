@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Purge
+Comment=Local disk cleanup
+Exec=purge
+Icon=dev.purge.Purge
+Terminal=false
+Categories=System;Utility;
+StartupWMClass=dev.purge.Purge

@@ -1,7 +1,7 @@
 use crate::{
     launch::LaunchOptions,
     model::{AppModel, Page},
-    preferences::{Filter, Preferences, Sort},
+    preferences::{AppLayout, Filter, Preferences, Sort},
 };
 use purge_core::*;
 use purge_engine::{
@@ -66,6 +66,11 @@ impl AppController {
         self.model.settings.dark = dark;
         self.save();
     }
+
+    pub fn set_app_layout(&mut self, layout: AppLayout) {
+        self.model.settings.app_layout = layout;
+        self.save();
+    }
     pub fn navigate(&mut self, page: Page) -> bool {
         self.model.navigate(page)
     }
@@ -126,7 +131,7 @@ impl AppController {
             return false;
         };
         let settings = self.model.settings.scan.clone();
-        self.model.status = "正在移入 Windows 回收站…".into();
+        self.model.status = "正在移入系统回收站…".into();
         self.spawn("purge-cleanup", move || {
             let _ = sender.send(cleaner::clean(&items, &settings));
         });
