@@ -138,7 +138,7 @@ impl AppController {
         true
     }
     pub fn start_duplicates(&mut self) -> bool {
-        if self.model.review.is_some() {
+        if self.model.review.is_some() || !self.model.can_find_duplicates() {
             return false;
         }
         let Ok((sender, cancel)) = self.jobs.begin_duplicates() else {
@@ -208,12 +208,11 @@ impl AppController {
         if self.busy() {
             return;
         }
-        self.model.selected.extend(ids.iter().copied().filter(|id| {
-            self.model
-                .items
-                .iter()
-                .any(|item| item.id == *id && item.cleanable())
-        }));
+        for id in ids {
+            if self.model.can_select(*id) {
+                self.model.selected.insert(*id);
+            }
+        }
     }
     pub fn toggle_group(&mut self, ids: &[u64]) {
         if self.busy() {
@@ -223,13 +222,11 @@ impl AppController {
         for id in ids {
             if clear {
                 self.model.selected.remove(id);
-            } else if self
-                .model
-                .items
-                .iter()
-                .any(|item| item.id == *id && item.cleanable())
-            {
+            } else if self.model.can_select(*id) {
                 self.model.selected.insert(*id);
+            } else {
+                self.model.notice =
+                    Some("请至少保留一份重复文件；可以使用“保留此份”选择其他副本。".into());
             }
         }
     }
@@ -238,6 +235,10 @@ impl AppController {
             return;
         }
         let items = self.model.visible(query);
+        if self.model.filter == Filter::Duplicates {
+            self.model.toggle_duplicate_extras(&items);
+            return;
+        }
         let safe_first = matches!(
             self.model.page,
             Page::Category(Category::Caches | Category::Developer)
@@ -258,6 +259,7 @@ impl AppController {
             self.model.items.retain(|current| current.id != item.id);
             self.model.selected.remove(&item.id);
         }
+        self.model.refresh_duplicate_copies();
         self.save();
     }
     pub fn add_directories(&mut self, paths: Vec<PathBuf>, exclusion: bool) {

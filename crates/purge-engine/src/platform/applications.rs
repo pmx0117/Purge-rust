@@ -93,6 +93,7 @@ fn registration_details(app: &RegKey, display: String) -> Registration {
         project_guard: None,
         modified: None,
         duplicate_group: None,
+        duplicate_copies: Default::default(),
     };
     let icon = app
         .get_value::<String, _>("DisplayIcon")

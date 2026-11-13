@@ -110,6 +110,13 @@ fn cleanup_history_round_trips_through_its_own_file() {
         bytes: 1024,
         moved: 2,
         failed: 1,
+        items: vec![purge_core::CleanupEntry {
+            name: "kept-file.bin".into(),
+            path: directory.path().join("kept-file.bin"),
+            bytes: 12,
+            error: Some("file locked".into()),
+        }],
+        failures: vec!["file locked".into()],
     };
     repository.save_history(&[entry]).unwrap();
     let history = repository.load_history().unwrap();
@@ -117,7 +124,49 @@ fn cleanup_history_round_trips_through_its_own_file() {
     assert_eq!(history[0].moved, 2);
     assert_eq!(history[0].failed, 1);
     assert_eq!(history[0].bytes, 1024);
+    assert_eq!(history[0].items[0].name, "kept-file.bin");
+    assert_eq!(history[0].items[0].error.as_deref(), Some("file locked"));
+    assert_eq!(history[0].failures, ["file locked"]);
     assert!(!directory.path().join("settings.json").exists());
+}
+
+#[test]
+fn legacy_cleanup_history_loads_without_item_details() {
+    let directory = TempDir::new().unwrap();
+    fs::write(
+        directory.path().join("history.json"),
+        r#"[{"time":"2026-11-10 14:00:00","bytes":1024,"moved":2,"failed":1}]"#,
+    )
+    .unwrap();
+    let repository = purge_engine::storage::LocalRepository::new(directory.path());
+    let history = repository.load_history().unwrap();
+    assert_eq!(history[0].moved, 2);
+    assert!(history[0].items.is_empty());
+    assert!(history[0].failures.is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn cleanup_history_preserves_non_utf8_original_paths() {
+    use std::{ffi::OsString, os::unix::ffi::OsStringExt, path::PathBuf};
+    let directory = TempDir::new().unwrap();
+    let path = PathBuf::from(OsString::from_vec(b"/fixture/file-\xff.bin".to_vec()));
+    let entry = purge_core::HistoryEntry {
+        time: "fixture".into(),
+        bytes: 12,
+        moved: 1,
+        failed: 0,
+        failures: vec![],
+        items: vec![purge_core::CleanupEntry {
+            name: "non-UTF-8 file".into(),
+            path: path.clone(),
+            bytes: 12,
+            error: None,
+        }],
+    };
+    let repository = purge_engine::storage::LocalRepository::new(directory.path());
+    repository.save_history(&[entry]).unwrap();
+    assert_eq!(repository.load_history().unwrap()[0].items[0].path, path);
 }
 
 #[test]

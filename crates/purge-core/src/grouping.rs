@@ -5,7 +5,10 @@ use std::{
 };
 pub fn path_id(path: &std::path::Path) -> u64 {
     let mut hash = DefaultHasher::new();
+    #[cfg(windows)]
     path.to_string_lossy().to_lowercase().hash(&mut hash);
+    #[cfg(not(windows))]
+    path.hash(&mut hash);
     hash.finish()
 }
 

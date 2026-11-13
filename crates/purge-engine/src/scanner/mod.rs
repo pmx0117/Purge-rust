@@ -11,6 +11,7 @@ pub use catalog::{
     Rule, TEMPORARY_RETENTION_HOURS, cache_rules, discover_cache_rules, discover_cache_rules_for,
 };
 use collector::{Candidate, ScanCollector};
+pub(crate) use duplicates::files_equal;
 pub use duplicates::find_duplicates;
 pub use events::ScanEvent;
 pub use exclusions::{contains_exclusion, excluded};

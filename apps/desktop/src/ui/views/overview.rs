@@ -99,7 +99,7 @@ impl PurgeView {
             } else if category == Category::LargeFiles {
                 format!(
                     "{count} 个文件，大于 {} MB",
-                    self.controller.model.settings.scan.minimum_file_mb
+                    self.controller.model.scanned_file_threshold()
                 )
             } else {
                 format!("{count} 个项目")

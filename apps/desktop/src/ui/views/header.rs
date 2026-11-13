@@ -42,25 +42,40 @@ impl PurgeView {
                 ),
                 |e| {
                     e.child(
+                        button("scan-scope", "扫描范围", "folder", t, false, true).on_click(
+                            cx.listener(|this, _, _, cx| {
+                                this.controller.model.notice = Some(this.scan_scope_description());
+                                cx.notify();
+                            }),
+                        ),
+                    )
+                },
+            )
+            .when(
+                matches!(
+                    self.controller.model.page,
+                    Page::Overview | Page::Category(_)
+                ),
+                |e| {
+                    e.child(
                         button(
                             "scan",
-                            if self.controller.operation() == Some(Operation::Scan) {
-                                "停止扫描"
-                            } else if self.controller.model.page == Page::Overview {
-                                "扫描全部"
-                            } else {
-                                "重新扫描"
+                            match self.controller.operation() {
+                                Some(Operation::Scan) => "停止扫描",
+                                Some(Operation::Duplicates) => "停止比较",
+                                _ if self.controller.model.page == Page::Overview => "扫描全部",
+                                _ => "重新扫描",
                             },
                             "refresh",
                             t,
                             false,
-                            !matches!(
-                                self.controller.operation(),
-                                Some(Operation::Cleanup | Operation::Duplicates)
-                            ),
+                            self.controller.operation() != Some(Operation::Cleanup),
                         )
                         .on_click(cx.listener(|this, _, w, cx| {
-                            if this.controller.operation() == Some(Operation::Scan) {
+                            if matches!(
+                                this.controller.operation(),
+                                Some(Operation::Scan | Operation::Duplicates)
+                            ) {
                                 this.controller.cancel();
                             } else {
                                 this.rescan(&Rescan, w, cx);

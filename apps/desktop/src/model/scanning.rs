@@ -2,12 +2,18 @@ use super::*;
 use purge_engine::scanner::ScanEvent;
 impl AppModel {
     pub fn begin_scan(&mut self, categories: Vec<Category>) {
+        if categories.contains(&Category::LargeFiles) && self.filter == Filter::Duplicates {
+            self.filter = Filter::All;
+        }
+        self.only_selected = false;
         self.items
             .retain(|item| !categories.contains(&item.category()));
         self.selected
             .retain(|id| self.items.iter().any(|item| item.id == *id));
         for category in &categories {
             self.scanned.remove(category);
+            self.scan_options
+                .insert(*category, self.settings.scan.clone());
         }
         self.scan_categories = categories;
         self.warnings.clear();

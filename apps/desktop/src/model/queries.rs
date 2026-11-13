@@ -19,6 +19,7 @@ impl AppModel {
             && matches_filter(item, self.filter)
             && self.matches_kind(item)
             && matches_query(item, query)
+            && (!self.only_selected || self.selected.contains(&item.id))
     }
     fn matches_kind(&self, item: &Item) -> bool {
         self.kind_filter

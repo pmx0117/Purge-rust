@@ -84,7 +84,7 @@ fn record_matches(
         }
     }
 }
-fn files_equal(first: &Path, second: &Path, cancel: &AtomicBool) -> bool {
+pub(crate) fn files_equal(first: &Path, second: &Path, cancel: &AtomicBool) -> bool {
     let (Ok(mut a), Ok(mut b)) = (fs::File::open(first), fs::File::open(second)) else {
         return false;
     };

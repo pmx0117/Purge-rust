@@ -57,8 +57,8 @@ impl PurgeView {
                     false,
                     true,
                 )
-                .on_click(cx.listener(|this, event: &ClickEvent, _, cx| {
-                    this.open_picker(Picker::Sort, event.position(), cx)
+                .on_click(cx.listener(|this, event: &ClickEvent, w, cx| {
+                    this.open_picker(Picker::Sort, event.position(), w, cx)
                 })),
             )
             .child(div().flex_1())
@@ -104,6 +104,9 @@ impl PurgeView {
                     let color = if selected { t.text } else { t.muted };
                     div()
                         .id(("app-layout", index))
+                        .focusable()
+                        .tab_index(0)
+                        .focus(move |e| e.border_1().border_color(rgb(t.accent)))
                         .h(px(24.))
                         .px(px(style::SPACE_8))
                         .rounded(px(6.))
@@ -177,8 +180,12 @@ impl PurgeView {
             .as_ref()
             .is_some_and(|(group, _)| group.id == item.id);
         let for_menu = item.clone();
+        let name = item.name.clone();
         div()
             .id(("application-card", item.id))
+            .focusable()
+            .tab_index(0)
+            .focus(move |e| e.border_color(rgb(t.accent)))
             .w(px(width))
             .h(px(CARD_HEIGHT))
             .p(px(style::SPACE_16))
@@ -198,11 +205,11 @@ impl PurgeView {
             .cursor_pointer()
             .hover(move |e| e.bg(rgb(t.raised)))
             .active(move |e| e.bg(rgb(t.fill_pressed)))
-            .on_click(cx.listener(|this, _, _, cx| this.handle(platform::open_apps_settings(), cx)))
+            .on_click(cx.listener(move |this, _, _, cx| this.manage_application(&name, cx)))
             .on_mouse_down(
                 MouseButton::Right,
-                cx.listener(move |this, event: &MouseDownEvent, _, cx| {
-                    this.open_application_context(for_menu.clone(), event.position, cx);
+                cx.listener(move |this, event: &MouseDownEvent, w, cx| {
+                    this.open_application_context(for_menu.clone(), event.position, w, cx);
                 }),
             )
             .child(self.application_icon(item, 56.))
@@ -251,9 +258,13 @@ impl PurgeView {
     fn application_list_row(&self, item: &Item, cx: &mut Context<Self>) -> Div {
         let t = self.theme;
         let for_menu = item.clone();
+        let name = item.name.clone();
         div().h(px(LIST_ROW_HEIGHT)).pb(px(style::SPACE_8)).child(
             div()
                 .id(("application-row", item.id))
+                .focusable()
+                .tab_index(0)
+                .focus(move |e| e.border_color(rgb(t.accent)))
                 .size_full()
                 .px(px(style::ROW_PADDING))
                 .py(px(style::SPACE_12))
@@ -266,13 +277,11 @@ impl PurgeView {
                 .gap(px(style::SPACE_12))
                 .cursor_pointer()
                 .hover(move |e| e.bg(rgb(t.row_hover)))
-                .on_click(
-                    cx.listener(|this, _, _, cx| this.handle(platform::open_apps_settings(), cx)),
-                )
+                .on_click(cx.listener(move |this, _, _, cx| this.manage_application(&name, cx)))
                 .on_mouse_down(
                     MouseButton::Right,
-                    cx.listener(move |this, event: &MouseDownEvent, _, cx| {
-                        this.open_application_context(for_menu.clone(), event.position, cx);
+                    cx.listener(move |this, event: &MouseDownEvent, w, cx| {
+                        this.open_application_context(for_menu.clone(), event.position, w, cx);
                     }),
                 )
                 .child(self.application_icon(item, 32.))
@@ -311,6 +320,7 @@ impl PurgeView {
         &mut self,
         item: Item,
         point: Point<Pixels>,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         self.context_item = Some((
@@ -322,6 +332,19 @@ impl PurgeView {
             point,
         ));
         self.picker = None;
+        self.focus_menu(3, window, cx);
+        cx.notify();
+    }
+
+    fn manage_application(&mut self, name: &str, cx: &mut Context<Self>) {
+        match platform::open_apps_settings() {
+            Ok(()) => {
+                self.controller.model.notice = Some(format!(
+                    "已打开系统应用管理器，请搜索“{name}”。右键应用可复制名称。"
+                ))
+            }
+            Err(error) => self.controller.model.notice = Some(error.to_string()),
+        }
         cx.notify();
     }
 

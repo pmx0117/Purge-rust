@@ -206,6 +206,7 @@ fn application_snapshots_keep_registration_warnings_and_cannot_be_cleaned_as_fil
         project_guard: None,
         modified: None,
         duplicate_group: None,
+        duplicate_copies: Default::default(),
     };
     let events = scan(
         ScanScope {

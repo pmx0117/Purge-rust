@@ -65,12 +65,24 @@ struct PurgeView {
     menu_position: Point<Pixels>,
     search: Entity<TextInput>,
     focus: FocusHandle,
-    review_focus: [FocusHandle; 3],
+    review_focus: Vec<FocusHandle>,
+    review_scroll: UniformListScrollHandle,
+    menu_focus: Vec<FocusHandle>,
+    result_focus: std::collections::HashMap<u64, FocusHandle>,
+    result_controls: Vec<ResultControl>,
+    result_scroll: UniformListScrollHandle,
     review_focused: bool,
     app_icons: std::collections::HashMap<u64, ImageSource>,
     _icon_task: Option<Task<()>>,
     _tick: Task<()>,
     _search_subscription: Subscription,
+    history_details: Option<usize>,
+}
+
+struct ResultControl {
+    id: u64,
+    row: usize,
+    items: Vec<u64>,
 }
 impl PurgeView {
     fn new(cx: &mut Context<Self>) -> Self {
@@ -101,12 +113,18 @@ impl PurgeView {
             menu_position: Point::default(),
             search,
             focus: cx.focus_handle(),
-            review_focus: [cx.focus_handle(), cx.focus_handle(), cx.focus_handle()],
+            review_focus: vec![cx.focus_handle(), cx.focus_handle(), cx.focus_handle()],
+            review_scroll: UniformListScrollHandle::new(),
+            menu_focus: Vec::new(),
+            result_focus: Default::default(),
+            result_controls: Vec::new(),
+            result_scroll: UniformListScrollHandle::new(),
             review_focused: false,
             app_icons: Default::default(),
             _icon_task: None,
             _tick: tick,
             _search_subscription: subscription,
+            history_details: None,
         };
         view.load_app_icons(cx);
         if view.controller.model.settings.scan_on_start {
@@ -141,6 +159,8 @@ impl PurgeView {
         self.context_item = None;
         self.picker = None;
         self.highlighted = None;
+        self.history_details = None;
+        self.result_scroll.scroll_to_item(0, ScrollStrategy::Top);
         self.search.update(cx, |input, cx| input.clear(cx));
         self.focus.focus(window, cx);
         cx.notify();
@@ -166,7 +186,11 @@ impl PurgeView {
         self.start_scan(Category::ALL.to_vec(), cx);
     }
     fn pump(&mut self, cx: &mut Context<Self>) {
+        let cleaning = self.controller.operation() == Some(Operation::Cleanup);
         if self.controller.poll() {
+            if cleaning && !self.busy() {
+                self.history_details = None;
+            }
             cx.notify();
         }
     }
@@ -226,11 +250,21 @@ impl PurgeView {
 }
 impl Render for PurgeView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let controls = 3 + self
+            .controller
+            .model
+            .review
+            .as_ref()
+            .map_or(0, |plan| plan.items.len() * 2);
+        while self.review_focus.len() < controls {
+            self.review_focus.push(cx.focus_handle());
+        }
         if self.controller.model.review.is_some() && !self.review_focused {
             self.review_focus[0].focus(window, cx);
             self.review_focused = true;
-        } else if self.controller.model.review.is_none() {
+        } else if self.controller.model.review.is_none() && self.review_focused {
             self.review_focused = false;
+            self.focus.focus(window, cx);
         }
         if self.native_dark != Some(self.theme.dark) {
             #[cfg(windows)]
@@ -303,32 +337,18 @@ impl Render for PurgeView {
             )
             .on_action(cx.listener(|this, _: &NextControl, w, cx| {
                 if this.controller.model.review.is_some() {
-                    let index = if this.review_focus[0].is_focused(w) {
-                        1
-                    } else if this.review_focus[1].is_focused(w)
-                        && this.controller.model.acknowledged()
-                    {
-                        2
-                    } else {
-                        0
-                    };
-                    this.review_focus[index].focus(w, cx);
+                    this.step_review_focus(true, w, cx);
+                } else if this.picker.is_some() || this.context_item.is_some() {
+                    this.step_menu_focus(true, w, cx);
                 } else {
                     w.focus_next(cx);
                 }
             }))
             .on_action(cx.listener(|this, _: &PreviousControl, w, cx| {
                 if this.controller.model.review.is_some() {
-                    let index = if this.review_focus[2].is_focused(w) {
-                        1
-                    } else if this.review_focus[1].is_focused(w) {
-                        0
-                    } else if this.controller.model.acknowledged() {
-                        2
-                    } else {
-                        1
-                    };
-                    this.review_focus[index].focus(w, cx);
+                    this.step_review_focus(false, w, cx);
+                } else if this.picker.is_some() || this.context_item.is_some() {
+                    this.step_menu_focus(false, w, cx);
                 } else {
                     w.focus_prev(cx);
                 }
@@ -355,7 +375,12 @@ impl Render for PurgeView {
                 this.controller.model.review = None;
                 this.context_item = None;
                 this.picker = None;
-                if !dismissing && this.controller.operation() == Some(Operation::Scan) {
+                if !dismissing
+                    && matches!(
+                        this.controller.operation(),
+                        Some(Operation::Scan | Operation::Duplicates)
+                    )
+                {
                     this.controller.cancel();
                 }
                 this.focus.focus(w, cx);
@@ -372,6 +397,10 @@ impl Render for PurgeView {
                     .px(px(style::PAGE_INSET))
                     .pt(px(style::PAGE_TOP))
                     .child(self.header(cx))
+                    .when(
+                        self.controller.model.page_results_stale() && !self.busy(),
+                        |e| e.child(self.stale_results_banner(cx)),
+                    )
                     .when_some(self.controller.model.notice.clone(), |e, s| {
                         e.child(
                             div()
@@ -395,55 +424,44 @@ impl Render for PurgeView {
                                 .child(
                                     div()
                                         .id("dismiss-notice")
+                                        .focusable()
+                                        .tab_index(0)
+                                        .focus(move |e| e.border_1().border_color(rgb(t.accent)))
                                         .cursor_pointer()
-                                        .on_click(cx.listener(|this, _, _, cx| {
+                                        .on_click(cx.listener(|this, _, w, cx| {
                                             this.controller.model.notice = None;
+                                            this.focus.focus(w, cx);
                                             cx.notify();
                                         }))
                                         .child(icon("x", t.faint, 10.)),
                                 ),
                         )
                     })
-                    .when(
-                        !self.controller.model.warnings.is_empty()
-                            && self.controller.model.notice.is_none(),
-                        |e| {
-                            e.child(
-                                div()
-                                    .id("scan-warning")
-                                    .mb(px(style::SPACE_12))
-                                    .p(px(style::SPACE_12))
-                                    .rounded(px(style::CARD_RADIUS))
-                                    .bg(rgb(t.review_bg))
-                                    .text_color(rgb(t.review))
-                                    .type_style(TextRole::Callout)
-                                    .cursor_pointer()
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        let mut details = this
-                                            .controller
-                                            .model
-                                            .warnings
-                                            .iter()
-                                            .take(20)
-                                            .cloned()
-                                            .collect::<Vec<_>>()
-                                            .join("\n");
-                                        if this.controller.model.warnings.len() > 20 {
-                                            details.push_str(&format!(
-                                                "\n另有 {} 项提示。",
-                                                this.controller.model.warnings.len() - 20
-                                            ));
-                                        }
-                                        this.controller.model.notice = Some(details);
-                                        cx.notify();
-                                    }))
-                                    .child(format!(
-                                        "{} 项未完成，查看详情",
-                                        self.controller.model.warnings.len()
-                                    )),
-                            )
-                        },
-                    )
+                    .when(!self.controller.model.warnings.is_empty(), |e| {
+                        e.child(
+                            div()
+                                .id("scan-warning")
+                                .focusable()
+                                .tab_index(0)
+                                .focus(move |e| e.border_1().border_color(rgb(t.accent)))
+                                .mb(px(style::SPACE_12))
+                                .p(px(style::SPACE_12))
+                                .rounded(px(style::CARD_RADIUS))
+                                .bg(rgb(t.review_bg))
+                                .text_color(rgb(t.review))
+                                .type_style(TextRole::Callout)
+                                .cursor_pointer()
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    let details = this.controller.model.warnings.join("\n");
+                                    this.controller.model.notice = Some(details);
+                                    cx.notify();
+                                }))
+                                .child(format!(
+                                    "{} 项未完成，查看详情",
+                                    self.controller.model.warnings.len()
+                                )),
+                        )
+                    })
                     .child(body),
             )
             .when(self.context_item.is_some() || self.picker.is_some(), |e| {

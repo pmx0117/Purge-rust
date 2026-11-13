@@ -1,6 +1,6 @@
 use crate::ItemKind;
 use serde::{Deserialize, Serialize};
-use std::{path::PathBuf, time::SystemTime};
+use std::{path::PathBuf, sync::Arc, time::SystemTime};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Category {
     Caches,
@@ -61,6 +61,12 @@ impl Footprint {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DuplicateCopy {
+    pub path: PathBuf,
+    pub footprint: Footprint,
+}
+
 #[derive(Debug, Clone)]
 pub struct Item {
     pub id: u64,
@@ -74,6 +80,8 @@ pub struct Item {
     pub project_guard: Option<Footprint>,
     pub modified: Option<SystemTime>,
     pub duplicate_group: Option<u64>,
+    /// Shared snapshots of the compared copies, revalidated before recycling.
+    pub duplicate_copies: Arc<[DuplicateCopy]>,
 }
 
 impl Item {

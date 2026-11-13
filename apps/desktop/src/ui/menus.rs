@@ -21,6 +21,7 @@ impl PurgeView {
         &mut self,
         picker: Picker,
         point: Point<Pixels>,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if self.busy() && matches!(picker, Picker::Threshold | Picker::StaleDays) {
@@ -29,6 +30,42 @@ impl PurgeView {
         self.context_item = None;
         self.menu_position = point + gpui::point(px(0.), px(12.));
         self.picker = (self.picker != Some(picker)).then_some(picker);
+        if self.picker.is_some() {
+            self.focus_menu(self.picker_choices(picker).len(), window, cx);
+        } else {
+            self.focus.focus(window, cx);
+        }
+        cx.notify();
+    }
+
+    pub(super) fn focus_menu(&mut self, count: usize, window: &mut Window, cx: &mut Context<Self>) {
+        self.menu_focus = (0..count).map(|_| cx.focus_handle()).collect();
+        if let Some(first) = self.menu_focus.first() {
+            first.focus(window, cx);
+        }
+    }
+
+    pub(super) fn step_menu_focus(
+        &self,
+        forward: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.menu_focus.is_empty() {
+            return;
+        }
+        let count = self.menu_focus.len();
+        let current = self
+            .menu_focus
+            .iter()
+            .position(|focus| focus.is_focused(window))
+            .unwrap_or(0);
+        let next = if forward {
+            (current + 1) % count
+        } else {
+            (current + count - 1) % count
+        };
+        self.menu_focus[next].focus(window, cx);
         cx.notify();
     }
 
@@ -104,6 +141,19 @@ impl PurgeView {
         let viewport = window.viewport_size();
         let menu = div()
             .id("popup-menu")
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, w, cx| {
+                match event.keystroke.key.as_str() {
+                    "down" => {
+                        this.step_menu_focus(true, w, cx);
+                        cx.stop_propagation();
+                    }
+                    "up" => {
+                        this.step_menu_focus(false, w, cx);
+                        cx.stop_propagation();
+                    }
+                    _ => (),
+                }
+            }))
             .occlude()
             .absolute()
             .left(position.x.min(viewport.width - px(228.)).max(px(8.)))
@@ -122,17 +172,21 @@ impl PurgeView {
             .border(px(0.5))
             .border_color(rgb(t.border_strong))
             .shadow_md()
-            .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+            .on_mouse_down_out(cx.listener(|this, _, w, cx| {
                 this.context_item = None;
                 this.picker = None;
+                this.focus.focus(w, cx);
                 cx.stop_propagation();
                 cx.notify();
             }));
         let menu = match choices {
             Some(choices) => menu.children(choices.into_iter().enumerate().map(
                 |(index, (label, choice))| {
-                    self.menu_row(("picker-option", index), cx)
-                        .on_click(cx.listener(move |this, _, _, cx| this.choose_value(choice, cx)))
+                    self.menu_row(("picker-option", index), index, cx)
+                        .on_click(cx.listener(move |this, _, w, cx| {
+                            this.choose_value(choice, cx);
+                            this.focus.focus(w, cx);
+                        }))
                         .child(div().size(px(14.)).when(self.choice_selected(choice), |e| {
                             e.child(icon("check", t.text, 12.))
                         }))
@@ -144,10 +198,23 @@ impl PurgeView {
         menu.into_any_element()
     }
 
-    fn menu_row(&self, id: impl Into<ElementId>, _cx: &mut Context<Self>) -> Stateful<Div> {
+    fn menu_row(
+        &self,
+        id: impl Into<ElementId>,
+        index: usize,
+        _cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
         let t = self.theme;
         div()
             .id(id)
+            .focusable()
+            .tab_index(0)
+            .track_focus(&self.menu_focus[index])
+            .focus(move |e| {
+                e.bg(rgb(t.fill_hover))
+                    .border_1()
+                    .border_color(rgb(t.accent))
+            })
             .h(px(28.))
             .px(px(style::SPACE_8))
             .rounded(px(6.))
@@ -182,14 +249,17 @@ impl PurgeView {
         .into_iter()
         .enumerate()
         {
-            if index == 2 && group.items[0].is_application() {
-                continue;
-            }
+            let title = if index == 2 && group.items[0].is_application() {
+                "复制应用名称"
+            } else {
+                title
+            };
             let selected = group.clone();
             menu = menu.child(
-                self.menu_row(("context-option", index), cx)
-                    .on_click(cx.listener(move |this, _, _, cx| {
+                self.menu_row(("context-option", index), index, cx)
+                    .on_click(cx.listener(move |this, _, w, cx| {
                         this.context_item = None;
+                        this.focus.focus(w, cx);
                         match index {
                             0 => this.handle(
                                 platform::reveal(
@@ -210,6 +280,9 @@ impl PurgeView {
                                     .collect::<Vec<_>>()
                                     .join("\n"),
                             )),
+                            _ if selected.items[0].is_application() => cx.write_to_clipboard(
+                                ClipboardItem::new_string(selected.name.clone()),
+                            ),
                             _ => this.controller.exclude_group(&selected),
                         }
                         cx.notify();

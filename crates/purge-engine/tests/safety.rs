@@ -24,6 +24,7 @@ fn item(path: &Path, category: Category) -> Item {
         project_guard: None,
         modified: None,
         duplicate_group: None,
+        duplicate_copies: Default::default(),
     }
 }
 fn project() -> (TempDir, Item, Settings) {

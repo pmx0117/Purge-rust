@@ -95,6 +95,7 @@ impl Candidate {
             project_guard,
             modified,
             duplicate_group: None,
+            duplicate_copies: Default::default(),
         })
     }
 }

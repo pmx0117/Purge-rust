@@ -24,6 +24,7 @@ impl PurgeView {
     fn review_entry(&self, item: &Item, index: usize, cx: &mut Context<Self>) -> Div {
         let t = self.theme;
         let path = item.path.clone();
+        let id = item.id;
         div().h(px(88.)).py(px(style::SPACE_4)).child(
             div()
                 .size_full()
@@ -53,6 +54,10 @@ impl PurgeView {
                         .child(
                             div()
                                 .id(("review-path", index))
+                                .focusable()
+                                .tab_index(0)
+                                .track_focus(&self.review_focus[index * 2 + 3])
+                                .focus(move |e| e.border_1().border_color(rgb(t.accent)))
                                 .type_style(TextRole::Metadata)
                                 .font_family(style::MONOSPACE)
                                 .text_color(rgb(t.muted))
@@ -80,6 +85,15 @@ impl PurgeView {
                         .numeric()
                         .text_color(rgb(t.muted))
                         .child(format_bytes(item.bytes())),
+                )
+                .child(
+                    button(("review-remove", id), "移除", "x", t, false, true)
+                        .track_focus(&self.review_focus[index * 2 + 4])
+                        .on_click(cx.listener(move |this, _, w, cx| {
+                            this.controller.model.remove_review_item(id);
+                            this.review_focus[0].focus(w, cx);
+                            cx.notify();
+                        })),
                 ),
         )
     }
@@ -97,6 +111,7 @@ impl PurgeView {
                     .collect()
             }),
         )
+        .track_scroll(&self.review_scroll)
         .h(px((items.len() as f32 * 88.).min(264.)))
         .min_h(px(88.));
         div()
@@ -198,5 +213,36 @@ impl PurgeView {
                     ),
             )
             .into_any_element()
+    }
+
+    pub(in crate::ui) fn step_review_focus(
+        &self,
+        forward: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(plan) = &self.controller.model.review else {
+            return;
+        };
+        let mut order = vec![0, 1];
+        if plan.acknowledged {
+            order.push(2);
+        }
+        order.extend(3..plan.items.len() * 2 + 3);
+        let current = order
+            .iter()
+            .position(|index| self.review_focus[*index].is_focused(window));
+        let next = match current {
+            Some(index) if forward => (index + 1) % order.len(),
+            Some(index) => (index + order.len() - 1) % order.len(),
+            None => 0,
+        };
+        let index = order[next];
+        if index >= 3 {
+            self.review_scroll
+                .scroll_to_item((index - 3) / 2, ScrollStrategy::Nearest);
+        }
+        self.review_focus[index].focus(window, cx);
+        cx.notify();
     }
 }

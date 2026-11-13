@@ -60,6 +60,7 @@ pub fn desktop_entry(path: &Path, contents: &str) -> Option<(Item, Option<String
             project_guard: None,
             modified: None,
             duplicate_group: None,
+            duplicate_copies: Default::default(),
         },
         values.get("Icon").map(|value| value.to_string()),
     ))
@@ -105,6 +106,8 @@ fn find_icon(name: &str, data_roots: &[PathBuf]) -> Option<PathBuf> {
     }
     for root in data_roots {
         for directory in [
+            "icons/hicolor/512x512/apps",
+            "icons/hicolor/256x256/apps",
             "icons/hicolor/128x128/apps",
             "icons/hicolor/96x96/apps",
             "icons/hicolor/64x64/apps",
@@ -192,6 +195,7 @@ fn mac_registrations(roots: &[PathBuf]) -> Vec<Registration> {
                     project_guard: None,
                     modified: None,
                     duplicate_group: None,
+                    duplicate_copies: Default::default(),
                 },
                 icon,
             });
@@ -254,5 +258,18 @@ mod tests {
         );
         assert!(find_icon("../elsewhere", std::slice::from_ref(&user)).is_none());
         assert!(find_icon("missing-icon", &[user]).is_none());
+    }
+
+    #[test]
+    fn linux_release_icon_size_is_resolved() {
+        let fixture = tempfile::TempDir::new().unwrap();
+        let icons = fixture.path().join("icons/hicolor/256x256/apps");
+        fs::create_dir_all(&icons).unwrap();
+        let path = icons.join("dev.purge.Purge.png");
+        fs::write(&path, b"icon path fixture").unwrap();
+        assert_eq!(
+            find_icon("dev.purge.Purge", &[fixture.path().into()]),
+            Some(path)
+        );
     }
 }

@@ -53,6 +53,9 @@ impl PurgeView {
             nav = nav.child(
                 div()
                     .id(("nav", index))
+                    .focusable()
+                    .tab_index(0)
+                    .focus(move |e| e.border_1().border_color(rgb(t.accent)))
                     .flex()
                     .items_center()
                     .gap(px(style::SPACE_8))
@@ -128,6 +131,9 @@ impl PurgeView {
             utility = utility.child(
                 div()
                     .id(("utility", index))
+                    .focusable()
+                    .tab_index(0)
+                    .focus(move |e| e.border_1().border_color(rgb(t.accent)))
                     .h(px(30.))
                     .px(px(style::SPACE_8))
                     .rounded(px(8.))
@@ -187,6 +193,9 @@ impl PurgeView {
                 div().px(px(style::SPACE_12)).pb(px(style::SPACE_12)).child(
                     div()
                         .id("sidebar-trash")
+                        .focusable()
+                        .tab_index(0)
+                        .focus(move |e| e.border_1().border_color(rgb(t.accent)))
                         .flex()
                         .items_center()
                         .gap(px(style::SPACE_8))

@@ -17,6 +17,7 @@ fn item(kind: ItemKind) -> Item {
         project_guard: None,
         modified: None,
         duplicate_group: None,
+        duplicate_copies: Default::default(),
     }
 }
 
@@ -91,6 +92,26 @@ fn equally_named_personal_files_stay_separate() {
     let mut second = first.clone();
     second.id = 2;
     assert_eq!(group_items(vec![first, second]).len(), 2);
+}
+
+#[test]
+fn path_identifiers_use_native_case_semantics() {
+    let first = path_id(std::path::Path::new("sample/Case.bin"));
+    let second = path_id(std::path::Path::new("sample/case.bin"));
+    #[cfg(windows)]
+    assert_eq!(first, second);
+    #[cfg(not(windows))]
+    assert_ne!(first, second);
+}
+
+#[cfg(unix)]
+#[test]
+fn distinct_non_utf8_paths_do_not_collapse_to_the_replacement_character() {
+    use std::{ffi::OsStr, os::unix::ffi::OsStrExt, path::Path};
+    assert_ne!(
+        path_id(Path::new(OsStr::from_bytes(b"sample/\xff"))),
+        path_id(Path::new(OsStr::from_bytes(b"sample/\xfe")))
+    );
 }
 
 #[test]

@@ -1,8 +1,14 @@
 use super::*;
 use purge::model::{FilterTab, SelectionSummary};
+use std::collections::HashMap;
+
+enum ResultRow {
+    Group(u64, usize),
+    Item(ItemGroup),
+}
 impl PurgeView {
     pub(in crate::ui) fn category(
-        &self,
+        &mut self,
         category: Category,
         window: &Window,
         cx: &mut Context<Self>,
@@ -10,6 +16,13 @@ impl PurgeView {
         let query = self.search.read(cx).content.to_string();
         let visible = self.controller.model.visible(&query);
         let groups = self.controller.model.grouped_visible(&query);
+        let group_ids: std::collections::HashSet<_> = groups.iter().map(|group| group.id).collect();
+        self.result_focus.retain(|id, _| group_ids.contains(id));
+        for group in &groups {
+            self.result_focus
+                .entry(group.id)
+                .or_insert_with(|| cx.focus_handle());
+        }
         let summary = self.controller.model.selection_summary(&visible);
         let show_search =
             matches!(category, Category::LargeFiles | Category::Applications) || !query.is_empty();
@@ -33,7 +46,8 @@ impl PurgeView {
                         }),
                 )
             })
-            .child(self.result_selection(category, summary, query, cx));
+            .child(self.result_selection(category, summary, query, cx))
+            .child(self.selected_results_bar(&visible, cx));
         div()
             .flex_1()
             .min_h_0()
@@ -46,7 +60,7 @@ impl PurgeView {
     fn result_search(
         &self,
         category: Category,
-        count: usize,
+        _count: usize,
         window: &Window,
         cx: &mut Context<Self>,
     ) -> Div {
@@ -79,13 +93,25 @@ impl PurgeView {
                 e.child(
                     button(
                         "duplicates",
-                        "查找重复",
+                        if self.controller.operation() == Some(Operation::Duplicates) {
+                            "停止比较"
+                        } else {
+                            "查找重复"
+                        },
                         "copy",
                         t,
                         false,
-                        !self.busy() && count > 0,
+                        self.controller.operation() == Some(Operation::Duplicates)
+                            || (!self.busy() && self.controller.model.can_find_duplicates()),
                     )
-                    .on_click(cx.listener(|this, _, _, cx| this.duplicates(cx))),
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        if this.controller.operation() == Some(Operation::Duplicates) {
+                            this.controller.cancel();
+                            cx.notify();
+                        } else {
+                            this.duplicates(cx);
+                        }
+                    })),
                 )
             })
     }
@@ -123,6 +149,9 @@ impl PurgeView {
         };
         div()
             .id(("filter", index))
+            .focusable()
+            .tab_index(0)
+            .focus(move |e| e.border_color(rgb(t.accent)))
             .flex()
             .items_center()
             .gap(px(style::SPACE_6))
@@ -161,8 +190,8 @@ impl PurgeView {
                 self.theme,
                 true,
             )
-            .on_click(cx.listener(|this, event: &ClickEvent, _, cx| {
-                this.open_picker(Picker::FileType, event.position(), cx);
+            .on_click(cx.listener(|this, event: &ClickEvent, w, cx| {
+                this.open_picker(Picker::FileType, event.position(), w, cx);
             })),
         )
     }
@@ -174,7 +203,11 @@ impl PurgeView {
         cx: &mut Context<Self>,
     ) -> Div {
         let t = self.theme;
-        let label = summary.label();
+        let label = if self.controller.model.filter == Filter::Duplicates {
+            "选择多余副本"
+        } else {
+            summary.label()
+        };
         let review_count = summary.review_add.len();
         div()
             .flex()
@@ -186,6 +219,9 @@ impl PurgeView {
                 e.child(
                     div()
                         .id("select-all")
+                        .focusable()
+                        .tab_index(0)
+                        .focus(move |e| e.rounded(px(4.)).border_1().border_color(rgb(t.accent)))
                         .flex()
                         .items_center()
                         .gap(px(style::SPACE_8))
@@ -246,35 +282,85 @@ impl PurgeView {
                     false,
                     true,
                 )
-                .on_click(cx.listener(|this, event: &ClickEvent, _, cx| {
-                    this.open_picker(Picker::Sort, event.position(), cx);
+                .on_click(cx.listener(|this, event: &ClickEvent, w, cx| {
+                    this.open_picker(Picker::Sort, event.position(), w, cx);
                 })),
             )
     }
     fn result_list(
-        &self,
+        &mut self,
         category: Category,
         groups: Vec<ItemGroup>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         if groups.is_empty() {
-            return self.empty_results(category);
+            self.result_controls.clear();
+            return self.empty_results(category, cx);
         }
+        let mut rows = Vec::new();
+        if self.controller.model.filter == Filter::Duplicates {
+            let mut buckets: HashMap<u64, Vec<ItemGroup>> = HashMap::new();
+            let mut order = Vec::new();
+            for group in groups {
+                let key = group.items[0].duplicate_group.unwrap_or(group.id);
+                if !buckets.contains_key(&key) {
+                    order.push(key);
+                }
+                buckets.entry(key).or_default().push(group);
+            }
+            for (index, key) in order.into_iter().enumerate() {
+                rows.push(ResultRow::Group(key, index + 1));
+                rows.extend(
+                    buckets
+                        .remove(&key)
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(ResultRow::Item),
+                );
+            }
+        } else {
+            rows.extend(groups.into_iter().map(ResultRow::Item));
+        }
+        self.result_controls = rows
+            .iter()
+            .enumerate()
+            .filter_map(|(row, item)| {
+                if let ResultRow::Item(group) = item {
+                    Some(ResultControl {
+                        id: group.id,
+                        row,
+                        items: group.items.iter().map(|item| item.id).collect(),
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
         uniform_list(
             ("items", category as usize),
-            groups.len(),
+            rows.len(),
             cx.processor(move |this, range: std::ops::Range<usize>, _, cx| {
                 range
-                    .map(|index| this.item_row(groups[index].clone(), cx))
+                    .map(|index| match &rows[index] {
+                        ResultRow::Group(group, number) => {
+                            this.duplicate_heading(*group, *number).into_any_element()
+                        }
+                        ResultRow::Item(group) => this.item_row(group.clone(), cx),
+                    })
                     .collect()
             }),
         )
+        .track_scroll(&self.result_scroll)
         .flex_1()
         .min_h_0()
         .into_any_element()
     }
-    fn empty_results(&self, category: Category) -> AnyElement {
+    fn empty_results(&self, category: Category, cx: &mut Context<Self>) -> AnyElement {
         let t = self.theme;
+        let state = self
+            .controller
+            .model
+            .empty_state(&self.search.read(cx).content, self.busy());
         div()
             .flex_1()
             .min_h_0()
@@ -284,17 +370,43 @@ impl PurgeView {
             .justify_center()
             .gap(px(style::SPACE_12))
             .child(icon(category_icon(category), t.faint, 32.))
-            .child(
-                div()
-                    .type_style(TextRole::Title)
-                    .child(empty_title(self.busy())),
-            )
+            .child(div().type_style(TextRole::Title).child(state.title))
             .child(
                 div()
                     .type_style(TextRole::Callout)
                     .text_color(rgb(t.muted))
-                    .child(empty_hint(category)),
+                    .child(state.hint),
             )
+            .when_some(state.action, |e, action| {
+                use purge::model::EmptyAction;
+                e.child(
+                    button(
+                        "empty-next-step",
+                        match action {
+                            EmptyAction::Scan => "开始扫描",
+                            EmptyAction::ResetFilters => "查看全部结果",
+                            EmptyAction::Review => "查看需要确认的项目",
+                            EmptyAction::Settings => "打开设置",
+                        },
+                        "external",
+                        t,
+                        false,
+                        true,
+                    )
+                    .on_click(cx.listener(
+                        move |this, _, w, cx| match action {
+                            EmptyAction::Scan => this.rescan(&Rescan, w, cx),
+                            EmptyAction::Settings => this.navigate(Page::Settings, w, cx),
+                            EmptyAction::Review => this.set_filter(Filter::Review, cx),
+                            EmptyAction::ResetFilters => {
+                                this.controller.model.reset_result_filters();
+                                this.search.update(cx, |input, cx| input.clear(cx));
+                                cx.notify();
+                            }
+                        },
+                    )),
+                )
+            })
             .into_any_element()
     }
     fn item_row(&self, group: ItemGroup, cx: &mut Context<Self>) -> AnyElement {
@@ -306,6 +418,20 @@ impl PurgeView {
             .iter()
             .all(|id| self.controller.model.selected.contains(id));
         let is_app = item.is_application();
+        let personal = item.category() == Category::LargeFiles;
+        let description = if personal {
+            let modified = item
+                .modified
+                .map(|modified| {
+                    chrono::DateTime::<chrono::Local>::from(modified)
+                        .format("%Y-%m-%d %H:%M")
+                        .to_string()
+                })
+                .unwrap_or_else(|| "时间未知".into());
+            format!("{} · {}", platform::display_path(&item.path), modified)
+        } else {
+            item.description.clone()
+        };
         let for_menu = group.clone();
         let context_active = self
             .context_item
@@ -318,6 +444,35 @@ impl PurgeView {
             .child(
                 div()
                     .id(("row", id))
+                    .focusable()
+                    .tab_index(0)
+                    .track_focus(&self.result_focus[&id])
+                    .focus(move |e| e.border_1().border_color(rgb(t.accent)))
+                    .on_key_down(cx.listener(move |this, event: &KeyDownEvent, w, cx| {
+                        match event.keystroke.key.as_str() {
+                            "down" => {
+                                this.move_result_focus(
+                                    id,
+                                    true,
+                                    event.keystroke.modifiers.shift,
+                                    w,
+                                    cx,
+                                );
+                                cx.stop_propagation();
+                            }
+                            "up" => {
+                                this.move_result_focus(
+                                    id,
+                                    false,
+                                    event.keystroke.modifiers.shift,
+                                    w,
+                                    cx,
+                                );
+                                cx.stop_propagation();
+                            }
+                            _ => (),
+                        }
+                    }))
                     .size_full()
                     .flex()
                     .items_center()
@@ -334,9 +489,10 @@ impl PurgeView {
                     }))
                     .on_mouse_down(
                         MouseButton::Right,
-                        cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+                        cx.listener(move |this, event: &MouseDownEvent, w, cx| {
                             this.context_item = Some((for_menu.clone(), event.position));
                             this.picker = None;
+                            this.focus_menu(3, w, cx);
                             cx.notify();
                         }),
                     )
@@ -362,12 +518,48 @@ impl PurgeView {
                                     .type_style(TextRole::Metadata)
                                     .text_color(rgb(t.muted))
                                     .line_clamp(2)
-                                    .child(item.description.clone()),
+                                    .child(description),
                             ),
                     )
                     .child(self.result_metadata(&group, cx)),
             )
             .into_any_element()
+    }
+
+    fn move_result_focus(
+        &mut self,
+        id: u64,
+        forward: bool,
+        extend: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(current) = self
+            .result_controls
+            .iter()
+            .position(|control| control.id == id)
+        else {
+            return;
+        };
+        let next = if forward {
+            (current + 1).min(self.result_controls.len() - 1)
+        } else {
+            current.saturating_sub(1)
+        };
+        if extend {
+            let ids = self.result_controls[current]
+                .items
+                .iter()
+                .chain(&self.result_controls[next].items)
+                .copied()
+                .collect::<Vec<_>>();
+            self.controller.select_items(&ids);
+        }
+        let control = &self.result_controls[next];
+        self.result_scroll
+            .scroll_to_item(control.row, ScrollStrategy::Nearest);
+        self.result_focus[&control.id].focus(window, cx);
+        cx.notify();
     }
 
     fn result_icon(&self, group: &ItemGroup) -> Div {
@@ -401,6 +593,7 @@ impl PurgeView {
         let t = self.theme;
         let item = &group.items[0];
         let safe = item.safety == Safety::Safe;
+        let keeper = item.id;
         div()
             .flex_shrink_0()
             .min_w(px(72.))
@@ -418,17 +611,41 @@ impl PurgeView {
                         "大小未知".into()
                     }),
             )
-            .when(!item.is_application(), |e| {
-                e.child(tag(
-                    if safe {
-                        "可安全清理"
-                    } else {
-                        "需要确认"
-                    },
-                    if safe { t.safe } else { t.review },
-                    if safe { t.safe_bg } else { t.review_bg },
-                ))
+            .when(item.duplicate_group.is_some(), |e| {
+                e.child(
+                    button(
+                        ("keep-copy", keeper),
+                        "保留此份",
+                        "check",
+                        t,
+                        false,
+                        !self.busy(),
+                    )
+                    .h(px(24.))
+                    .type_style(TextRole::Metadata)
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        cx.stop_propagation();
+                        if !this.busy() {
+                            this.controller.model.select_duplicate_keeper(keeper);
+                        }
+                        cx.notify();
+                    })),
+                )
             })
+            .when(
+                !item.is_application() && item.duplicate_group.is_none(),
+                |e| {
+                    e.child(tag(
+                        if safe {
+                            "可安全清理"
+                        } else {
+                            "需要确认"
+                        },
+                        if safe { t.safe } else { t.review },
+                        if safe { t.safe_bg } else { t.review_bg },
+                    ))
+                },
+            )
             .when(item.is_application(), |e| {
                 e.child(
                     div()
@@ -480,7 +697,7 @@ impl PurgeView {
                                 .type_style(TextRole::Callout)
                                 .text_color(rgb(t.muted))
                                 .child(format!(
-                                    "累计移入回收站 · {} 次操作",
+                                    "最近 {} 次操作移入回收站",
                                     self.controller.model.history.len()
                                 )),
                         ),
@@ -509,7 +726,11 @@ impl PurgeView {
                     .flex()
                     .items_center()
                     .gap(px(style::SPACE_16))
-                    .child(icon("check", t.safe, 16.))
+                    .child(icon(
+                        if entry.failed > 0 { "info" } else { "check" },
+                        if entry.failed > 0 { t.review } else { t.safe },
+                        16.,
+                    ))
                     .child(
                         div()
                             .flex_1()
@@ -533,8 +754,33 @@ impl PurgeView {
                         div()
                             .font_weight(FontWeight::SEMIBOLD)
                             .child(format_bytes(entry.bytes)),
+                    )
+                    .child(
+                        button(
+                            ("history-details", index),
+                            if self.history_details == Some(index) {
+                                "收起详情"
+                            } else {
+                                "文件与原因"
+                            },
+                            "list",
+                            t,
+                            false,
+                            true,
+                        )
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.history_details = if this.history_details == Some(index) {
+                                None
+                            } else {
+                                Some(index)
+                            };
+                            cx.notify();
+                        })),
                     ),
             );
+            if self.history_details == Some(index) {
+                list = list.child(self.cleanup_history_details(index, cx));
+            }
         }
         div()
             .id("history-scroll")
@@ -567,15 +813,4 @@ fn brand_name(name: &str) -> Option<&'static str> {
     .into_iter()
     .find(|(needle, _)| lower.contains(needle))
     .map(|(_, brand)| brand)
-}
-
-fn empty_title(busy: bool) -> &'static str {
-    if busy { "正在扫描" } else { "暂无项目" }
-}
-fn empty_hint(category: Category) -> &'static str {
-    if category == Category::Developer {
-        "可在设置中添加项目目录，或调整筛选条件。"
-    } else {
-        "重新扫描，或调整筛选条件。"
-    }
 }

@@ -1,5 +1,5 @@
 use super::*;
-use std::collections::HashMap;
+use std::sync::Arc;
 #[derive(Debug, Clone)]
 pub struct ReviewPlan {
     pub items: Vec<Item>,
@@ -54,6 +54,7 @@ impl AppModel {
         for item in &mut self.items {
             item.duplicate_group = groups.get(&item.id).copied();
         }
+        self.refresh_duplicate_copies();
         if self.page == Page::Category(Category::LargeFiles) {
             self.filter = Filter::Duplicates;
         }
@@ -70,12 +71,16 @@ impl AppModel {
         self.trash_bytes = report.trash_bytes;
         self.items
             .retain(|item| !report.moved_ids.contains(&item.id));
+        self.refresh_duplicate_copies();
         self.selected.clear();
+        self.only_selected = false;
         let entry = HistoryEntry {
             time,
             bytes: report.bytes,
             moved: report.moved_ids.len(),
             failed: report.failures.len(),
+            items: report.items,
+            failures: report.failures.clone(),
         };
         self.notice = Some(format!(
             "已将 {} 项（{}）移入回收站，{} 项跳过。清空回收站后才会释放空间。",
@@ -86,5 +91,42 @@ impl AppModel {
         self.warnings = report.failures;
         self.history.insert(0, entry);
         self.history.truncate(200);
+    }
+
+    pub fn remove_review_item(&mut self, id: u64) {
+        if let Some(plan) = &mut self.review {
+            plan.items.retain(|item| item.id != id);
+            plan.acknowledged = false;
+            if plan.items.is_empty() {
+                self.review = None;
+            }
+        }
+        self.selected.remove(&id);
+    }
+
+    pub fn refresh_duplicate_copies(&mut self) {
+        let mut copies: HashMap<u64, Vec<DuplicateCopy>> = HashMap::new();
+        for item in &self.items {
+            if let Some(group) = item.duplicate_group {
+                copies.entry(group).or_default().push(DuplicateCopy {
+                    path: item.path.clone(),
+                    footprint: item.footprint.clone(),
+                });
+            }
+        }
+        let copies: HashMap<u64, Arc<[DuplicateCopy]>> = copies
+            .into_iter()
+            .filter(|(_, copies)| copies.len() > 1)
+            .map(|(group, copies)| (group, copies.into()))
+            .collect();
+        for item in &mut self.items {
+            item.duplicate_copies = item
+                .duplicate_group
+                .and_then(|group| copies.get(&group).cloned())
+                .unwrap_or_default();
+            if item.duplicate_copies.is_empty() {
+                item.duplicate_group = None;
+            }
+        }
     }
 }

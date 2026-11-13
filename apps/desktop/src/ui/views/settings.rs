@@ -74,6 +74,13 @@ impl PurgeView {
                     let selected = t.dark == dark;
                     div()
                         .id(("appearance", index))
+                        .focusable()
+                        .tab_index(0)
+                        .focus(move |e| {
+                            e.rounded(px(style::FIELD_RADIUS))
+                                .border_1()
+                                .border_color(rgb(t.accent))
+                        })
                         .flex()
                         .flex_col()
                         .items_center()
@@ -125,8 +132,8 @@ impl PurgeView {
                     )
                     .numeric()
                     .on_click(cx.listener(
-                        |this, event: &ClickEvent, _, cx| {
-                            this.open_picker(Picker::Threshold, event.position(), cx);
+                        |this, event: &ClickEvent, w, cx| {
+                            this.open_picker(Picker::Threshold, event.position(), w, cx);
                         },
                     )),
                 ),
@@ -159,8 +166,8 @@ impl PurgeView {
                     )
                     .numeric()
                     .on_click(cx.listener(
-                        |this, event: &ClickEvent, _, cx| {
-                            this.open_picker(Picker::StaleDays, event.position(), cx);
+                        |this, event: &ClickEvent, w, cx| {
+                            this.open_picker(Picker::StaleDays, event.position(), w, cx);
                         },
                     )),
                 ),
@@ -256,6 +263,9 @@ impl PurgeView {
                                 index,
                             ))
                             .size(px(24.))
+                            .focusable()
+                            .tab_index(0)
+                            .focus(move |e| e.border_1().border_color(rgb(t.accent)))
                             .rounded_full()
                             .flex()
                             .items_center()

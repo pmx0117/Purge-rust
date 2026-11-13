@@ -203,6 +203,7 @@ mod tests {
             project_guard: None,
             modified: None,
             duplicate_group: None,
+            duplicate_copies: Default::default(),
         }
     }
 

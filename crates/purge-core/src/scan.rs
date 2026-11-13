@@ -3,7 +3,7 @@ use std::{
     path::PathBuf,
     time::{Duration, SystemTime},
 };
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ScanOptions {
     pub minimum_file_mb: u64,

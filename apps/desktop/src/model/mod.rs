@@ -1,10 +1,12 @@
+mod experience;
 mod queries;
 mod review;
 mod scanning;
 use crate::preferences::{Filter, Preferences, Sort};
+pub use experience::{EmptyAction, EmptyState};
 use purge_core::*;
 pub use review::ReviewPlan;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Page {
@@ -62,6 +64,8 @@ pub struct AppModel {
     pub notice: Option<String>,
     pub warnings: Vec<String>,
     pub review: Option<ReviewPlan>,
+    pub scan_options: HashMap<Category, ScanOptions>,
+    pub only_selected: bool,
 }
 impl Default for AppModel {
     fn default() -> Self {
@@ -89,6 +93,8 @@ impl AppModel {
             notice: None,
             warnings: vec![],
             review: None,
+            scan_options: HashMap::new(),
+            only_selected: false,
         }
     }
     fn saved_choices(&self, category: Category) -> crate::preferences::CategoryPreferences {
@@ -111,6 +117,7 @@ impl AppModel {
         }
         self.page = page;
         self.kind_filter = None;
+        self.only_selected = false;
         self.filter = page
             .scan_category()
             .map(|category| self.saved_filter(category))
@@ -126,6 +133,7 @@ impl AppModel {
             return false;
         }
         self.filter = filter;
+        self.only_selected = false;
         self.update_saved_choice(|preferences| preferences.filter = filter);
         true
     }
